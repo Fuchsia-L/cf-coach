@@ -2,6 +2,7 @@ const { COMMANDS } = require('./constants');
 const { parseArgs } = require('./args');
 const { loadConfig } = require('./storage');
 const { runFetchCommand } = require('./commands/fetch');
+const { runStatsCommand } = require('./commands/stats');
 const { printError, writeLine } = require('./terminal');
 
 function formatHelp() {
@@ -24,6 +25,7 @@ function runPlaceholderCommand(command, context) {
 
 const COMMAND_HANDLERS = {
   fetch: runFetchCommand,
+  stats: runStatsCommand,
 };
 
 async function runCli(argv, runtime = {}) {

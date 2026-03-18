@@ -20,6 +20,11 @@ function runCli(args, homeDir) {
   });
 }
 
+function writeJson(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
 test('CLI help output is shown with no arguments', () => {
   const homeDir = createHomeDir();
   const result = runCli([], homeDir);
@@ -40,8 +45,28 @@ test('CLI returns non-zero for invalid commands', () => {
 
 test('CLI handle override takes precedence over config default', () => {
   const homeDir = createHomeDir();
+  const cacheDir = path.join(homeDir, '.cf-coach', 'cache');
+
+  writeJson(path.join(cacheDir, 'user.json'), {
+    handle: 'tourist',
+    rank: 'specialist',
+    rating: 1500,
+    maxRating: 1500,
+  });
+  writeJson(path.join(cacheDir, 'submissions.json'), {
+    handle: 'tourist',
+    items: [],
+  });
+  writeJson(path.join(cacheDir, 'rating.json'), {
+    handle: 'tourist',
+    items: [],
+  });
+  writeJson(path.join(cacheDir, 'problems.json'), {
+    items: [],
+  });
+
   const result = runCli(['stats', '--handle', 'tourist'], homeDir);
 
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /当前 handle：tourist/);
+  assert.match(result.stdout, /统计：tourist/);
 });
