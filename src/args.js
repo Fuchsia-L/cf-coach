@@ -6,7 +6,8 @@ function parseArgs(argv) {
   const options = {
     handle: null,
   };
-  const positional = [];
+  let command = null;
+  const commandArgs = [];
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -39,7 +40,7 @@ function parseArgs(argv) {
       continue;
     }
 
-    if (arg.startsWith('--')) {
+    if (!command && arg.startsWith('--')) {
       return {
         command: null,
         commandArgs: [],
@@ -49,11 +50,13 @@ function parseArgs(argv) {
       };
     }
 
-    positional.push(arg);
-  }
+    if (!command) {
+      command = arg;
+      continue;
+    }
 
-  const command = positional[0] || null;
-  const commandArgs = positional.slice(1);
+    commandArgs.push(arg);
+  }
 
   if (!command) {
     return {

@@ -38,3 +38,11 @@ test('parseArgs reports a missing handle value', () => {
 
   assert.equal(result.error, '选项 --handle 需要一个值');
 });
+
+test('parseArgs preserves command-specific flags after the command name', () => {
+  const result = parseArgs(['next', '--topic', 'dp', '--review']);
+
+  assert.equal(result.command, 'next');
+  assert.deepEqual(result.commandArgs, ['--topic', 'dp', '--review']);
+  assert.equal(result.error, null);
+});

@@ -2,6 +2,7 @@ const { COMMANDS } = require('./constants');
 const { parseArgs } = require('./args');
 const { loadConfig } = require('./storage');
 const { runFetchCommand } = require('./commands/fetch');
+const { runNextCommand } = require('./commands/next');
 const { runStatsCommand } = require('./commands/stats');
 const { runWeakCommand } = require('./commands/weak');
 const { printError, writeLine } = require('./terminal');
@@ -16,6 +17,10 @@ function formatHelp() {
     '全局选项：',
     '  --handle <value>  指定本次命令使用的 Codeforces handle',
     '  -h, --help        显示帮助信息',
+    '',
+    'next 命令选项：',
+    '  --topic <tag>     手动指定推荐 topic',
+    '  --review          输出需要回打的旧锚点',
   ].join('\n');
 }
 
@@ -26,6 +31,7 @@ function runPlaceholderCommand(command, context) {
 
 const COMMAND_HANDLERS = {
   fetch: runFetchCommand,
+  next: runNextCommand,
   stats: runStatsCommand,
   weak: runWeakCommand,
 };
