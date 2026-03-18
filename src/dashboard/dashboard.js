@@ -40,6 +40,8 @@
     'submission-timeline': true,
   };
 
+  const TAG_ABILITY_VISIBLE_COUNT = 10;
+
   const numberFormatter = new Intl.NumberFormat('en-US');
 
   function createDashboardUiState(initialState = {}) {
@@ -48,6 +50,7 @@
         ...DEFAULT_EXPANDED_PANELS,
         ...(initialState.expandedPanels || {}),
       },
+      expandedTagAbility: initialState.expandedTagAbility === true,
       tooltip: {
         visible: initialState.tooltip?.visible === true,
         panelName: initialState.tooltip?.panelName || null,
@@ -83,6 +86,19 @@
         ...currentState.expandedPanels,
         [panelName]: !isPanelExpanded(currentState, panelName),
       },
+    };
+  }
+
+  function isTagAbilityExpanded(uiState) {
+    return createDashboardUiState(uiState).expandedTagAbility === true;
+  }
+
+  function toggleTagAbilityExpanded(uiState) {
+    const currentState = createDashboardUiState(uiState);
+
+    return {
+      ...currentState,
+      expandedTagAbility: !currentState.expandedTagAbility,
     };
   }
 
@@ -612,10 +628,17 @@
 
   function renderTagAbilityPanel(tagStats, uiState) {
     const items = sortTagStats(tagStats?.items || []);
+    const isExpanded = isTagAbilityExpanded(uiState);
+    const shouldShowDisclosure = items.length > TAG_ABILITY_VISIBLE_COUNT;
+    const disclosureState = shouldShowDisclosure ? (isExpanded ? 'expanded' : 'collapsed') : 'full';
+    const visibleItems = shouldShowDisclosure && !isExpanded
+      ? items.slice(0, TAG_ABILITY_VISIBLE_COUNT)
+      : items;
     const maxAttempted = Math.max(1, ...items.map((item) => Number(item.attemptedCount) || 0));
     const body = items.length === 0
       ? renderPanelStatus('empty', 'Tag performance is not available.')
-      : `<div class="tag-list">${items.map((item) => {
+      : [
+          `<div class="tag-list" data-tag-ability-state="${disclosureState}">${visibleItems.map((item) => {
           const attemptedWidth = ((Number(item.attemptedCount) || 0) / maxAttempted) * 100;
           const acceptedWidth = ((Number(item.acceptedCount) || 0) / maxAttempted) * 100;
 
@@ -635,7 +658,15 @@
             '  </div>',
             '</article>',
           ].join('');
-        }).join('')}</div>`;
+        }).join('')}</div>`,
+          shouldShowDisclosure
+            ? [
+                '<div class="tag-list-actions">',
+                `  <button class="panel-toggle tag-list-toggle" type="button" data-dashboard-tag-ability-toggle="true" aria-expanded="${isExpanded ? 'true' : 'false'}">${isExpanded ? `Show top ${TAG_ABILITY_VISIBLE_COUNT}` : `Show all ${escapeHtml(formatNumber(items.length))} tags`}</button>`,
+                '</div>',
+              ].join('')
+            : '',
+        ].join('');
 
     return renderPanelFrame('tag-ability', 'Tag Ability', 'By accepted count', body, 'panel-tags', {
       collapsible: true,
@@ -1086,6 +1117,11 @@
       return render();
     }
 
+    function toggleTagAbilityDisclosure() {
+      controllerState.uiState = toggleTagAbilityExpanded(controllerState.uiState);
+      return render();
+    }
+
     function showTooltip(tooltip) {
       controllerState.uiState = setTooltipState(controllerState.uiState, {
         visible: true,
@@ -1119,6 +1155,13 @@
       }
 
       const handleClick = (event) => {
+        const tagAbilityToggleButton = findClosestAttributeTarget(event.target, 'data-dashboard-tag-ability-toggle');
+
+        if (tagAbilityToggleButton) {
+          toggleTagAbilityDisclosure();
+          return;
+        }
+
         const toggleButton = findClosestAttributeTarget(event.target, 'data-dashboard-toggle');
 
         if (!toggleButton || typeof toggleButton.getAttribute !== 'function') {
@@ -1196,6 +1239,7 @@
       setData,
       setProfilePinned,
       showTooltip,
+      toggleTagAbilityDisclosure,
       togglePanel,
     };
   }
@@ -1316,6 +1360,7 @@
     getSubmissionVerdictLabel,
     isPanelCollapsible,
     isPanelExpanded,
+    isTagAbilityExpanded,
     loadDashboardData,
     renderDashboard,
     renderErrorState,
@@ -1333,6 +1378,8 @@
     setProfilePinnedState,
     setTooltipState,
     sortTagStats,
+    TAG_ABILITY_VISIBLE_COUNT,
+    toggleTagAbilityExpanded,
     togglePanelExpanded,
   };
 

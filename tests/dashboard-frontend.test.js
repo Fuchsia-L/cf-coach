@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   COLLAPSIBLE_PANEL_NAMES,
+  TAG_ABILITY_VISIBLE_COUNT,
   buildRatingTrendGeometry,
   buildSubmissionTimelineGeometry,
   createDashboardController,
@@ -13,6 +14,7 @@ const {
   getRatingBucketColor,
   getSubmissionVerdictColor,
   isPanelExpanded,
+  isTagAbilityExpanded,
   renderDashboard,
   renderNextProblemPanel,
   renderProfileBar,
@@ -23,8 +25,13 @@ const {
   renderTagAbilityPanel,
   renderWeakAnalysisPanel,
   sortTagStats,
+  toggleTagAbilityExpanded,
   togglePanelExpanded,
 } = require('../src/dashboard/dashboard');
+
+function countMatches(text, pattern) {
+  return (text.match(pattern) || []).length;
+}
 
 function createDashboardFixture() {
   return {
@@ -137,12 +144,19 @@ test('dashboard ui state helpers support panel expansion defaults and local togg
   assert.ok(COLLAPSIBLE_PANEL_NAMES.includes('roadmap'));
   assert.equal(isPanelExpanded(uiState, 'roadmap'), true);
   assert.equal(isPanelExpanded(uiState, 'profile'), true);
+  assert.equal(isTagAbilityExpanded(uiState), false);
 
   const collapsedState = togglePanelExpanded(uiState, 'roadmap');
   assert.equal(isPanelExpanded(collapsedState, 'roadmap'), false);
 
   const restoredState = togglePanelExpanded(collapsedState, 'roadmap');
   assert.equal(isPanelExpanded(restoredState, 'roadmap'), true);
+
+  const expandedTagAbilityState = toggleTagAbilityExpanded(restoredState);
+  assert.equal(isTagAbilityExpanded(expandedTagAbilityState), true);
+
+  const restoredTagAbilityState = toggleTagAbilityExpanded(expandedTagAbilityState);
+  assert.equal(isTagAbilityExpanded(restoredTagAbilityState), false);
 });
 
 test('rating trend geometry uses non-uniform x spacing based on timestamps', () => {
@@ -243,6 +257,69 @@ test('renderTagAbilityPanel sorts tags by accepted count and shows attempted, ac
   assert.match(html, /Attempted 5/);
   assert.match(html, /Accepted 3/);
   assert.match(html, /60%/);
+});
+
+test('renderTagAbilityPanel shows only the top 10 tags by default when more data exists', () => {
+  const items = Array.from({ length: 12 }, (_, index) => ({
+    tag: `tag-${index + 1}`,
+    acceptedCount: index + 1,
+    attemptedCount: index + 2,
+    acceptanceRate: (index + 1) / (index + 2),
+  }));
+
+  const html = renderTagAbilityPanel({ items });
+
+  assert.equal(countMatches(html, /class="tag-row"/g), TAG_ABILITY_VISIBLE_COUNT);
+  assert.match(html, /data-tag-ability-state="collapsed"/);
+  assert.match(html, /data-dashboard-tag-ability-toggle="true"/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /Show all 12 tags/);
+  assert.match(html, /data-tag-name="tag-12"/);
+  assert.match(html, /data-tag-name="tag-3"/);
+  assert.doesNotMatch(html, /data-tag-name="tag-2"/);
+  assert.doesNotMatch(html, /data-tag-name="tag-1"/);
+});
+
+test('renderTagAbilityPanel expands to all tags and collapses back to the top 10', () => {
+  const items = Array.from({ length: 12 }, (_, index) => ({
+    tag: `tag-${index + 1}`,
+    acceptedCount: index + 1,
+    attemptedCount: index + 2,
+    acceptanceRate: (index + 1) / (index + 2),
+  }));
+
+  const collapsedHtml = renderTagAbilityPanel({ items }, createDashboardUiState());
+  const expandedHtml = renderTagAbilityPanel(
+    { items },
+    toggleTagAbilityExpanded(createDashboardUiState())
+  );
+  const restoredHtml = renderTagAbilityPanel(
+    { items },
+    toggleTagAbilityExpanded(toggleTagAbilityExpanded(createDashboardUiState()))
+  );
+
+  assert.equal(countMatches(expandedHtml, /class="tag-row"/g), 12);
+  assert.match(expandedHtml, /data-tag-ability-state="expanded"/);
+  assert.match(expandedHtml, /aria-expanded="true"/);
+  assert.match(expandedHtml, /Show top 10/);
+  assert.match(expandedHtml, /data-tag-name="tag-2"/);
+  assert.match(expandedHtml, /data-tag-name="tag-1"/);
+  assert.equal(countMatches(collapsedHtml, /class="tag-row"/g), TAG_ABILITY_VISIBLE_COUNT);
+  assert.equal(countMatches(restoredHtml, /class="tag-row"/g), TAG_ABILITY_VISIBLE_COUNT);
+  assert.match(restoredHtml, /data-tag-ability-state="collapsed"/);
+});
+
+test('renderTagAbilityPanel keeps small tag lists fully visible without a disclosure toggle', () => {
+  const html = renderTagAbilityPanel({
+    items: [
+      { tag: 'greedy', acceptedCount: 3, attemptedCount: 5, acceptanceRate: 0.6 },
+      { tag: 'dp', acceptedCount: 2, attemptedCount: 4, acceptanceRate: 0.5 },
+      { tag: 'math', acceptedCount: 1, attemptedCount: 2, acceptanceRate: 0.5 },
+    ],
+  });
+
+  assert.equal(countMatches(html, /class="tag-row"/g), 3);
+  assert.doesNotMatch(html, /data-dashboard-tag-ability-toggle="true"/);
 });
 
 test('renderRatingBucketPanel shows fixed bucket labels and Codeforces-colored bars', () => {
@@ -428,9 +505,32 @@ test('dashboard controller updates panel and tooltip state without reloading dat
 
   controller.render();
   assert.match(root.innerHTML, /data-panel="roadmap"[^>]*data-panel-expanded="true"/);
+  assert.equal(countMatches(root.innerHTML, /class="tag-row"/g), 1);
 
   controller.togglePanel('roadmap');
   assert.match(root.innerHTML, /data-panel="roadmap"[^>]*data-panel-expanded="false"/);
+
+  controller.setData({
+    ...createDashboardFixture(),
+    tagStats: {
+      state: 'ready',
+      payload: {
+        items: Array.from({ length: 12 }, (_, index) => ({
+          tag: `tag-${index + 1}`,
+          acceptedCount: index + 1,
+          attemptedCount: index + 2,
+          acceptanceRate: (index + 1) / (index + 2),
+        })),
+      },
+    },
+  });
+  assert.equal(countMatches(root.innerHTML, /class="tag-row"/g), TAG_ABILITY_VISIBLE_COUNT);
+
+  controller.toggleTagAbilityDisclosure();
+  assert.equal(countMatches(root.innerHTML, /class="tag-row"/g), 12);
+
+  controller.toggleTagAbilityDisclosure();
+  assert.equal(countMatches(root.innerHTML, /class="tag-row"/g), TAG_ABILITY_VISIBLE_COUNT);
 
   controller.showTooltip({
     panelName: 'rating-trend',

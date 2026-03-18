@@ -503,6 +503,16 @@ h1,
   margin: 12px 0 10px;
 }
 
+.tag-list-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.tag-list-toggle {
+  min-width: 148px;
+}
+
 .tag-bar-track,
 .bucket-bar-track {
   position: relative;
