@@ -118,13 +118,15 @@ test('dashboard server returns HTML shell, assets, and JSON 404 for missing API 
     assert.equal(rootResponse.statusCode, 200);
     assert.match(rootResponse.headers['content-type'], /^text\/html/);
     assert.match(rootResponse.body, /<title>cf-coach Dashboard<\/title>/);
+    assert.match(rootResponse.body, /id="app"/);
     assert.match(rootResponse.body, /\/assets\/dashboard\.css/);
     assert.match(rootResponse.body, /\/assets\/dashboard\.js/);
+    assert.match(rootResponse.body, /Loading local cache insights/);
 
     const assetResponse = await request(port, '/assets/dashboard.css');
     assert.equal(assetResponse.statusCode, 200);
     assert.match(assetResponse.headers['content-type'], /^text\/css/);
-    assert.match(assetResponse.body, /color-scheme: dark/);
+    assert.match(assetResponse.body, /dashboard-grid/);
 
     const apiResponse = await request(port, '/api/missing');
     assert.equal(apiResponse.statusCode, 404);

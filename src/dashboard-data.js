@@ -143,7 +143,12 @@ function buildRatingHistoryPayload(caches = {}) {
     items: items.map((entry) => ({
       contestName: entry.contestName || null,
       timestamp: entry.ratingUpdateTimeSeconds ?? null,
+      oldRating: entry.oldRating ?? null,
       newRating: entry.newRating ?? null,
+      delta:
+        entry.newRating != null && entry.oldRating != null
+          ? entry.newRating - entry.oldRating
+          : null,
     })),
   };
 }

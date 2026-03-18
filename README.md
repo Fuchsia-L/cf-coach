@@ -89,4 +89,17 @@ node cf.js weak --handle tourist
 npm test
 ```
 
-测试覆盖 fixture 驱动的 `fetch` / `stats` / `weak` / `next` 流程、缺失缓存、损坏缓存、无效 handle、损坏 roadmap，以及依赖检查。
+测试覆盖 fixture 驱动的 `fetch` / `stats` / `weak` / `next` 流程、Dashboard JSON API、前端渲染逻辑、以及本地 Dashboard smoke 流程。
+
+## Dashboard 视觉检查
+
+```bash
+node cf.js fetch --handle tourist
+node cf.js serve --port 3000
+```
+
+- 在桌面宽度（推荐 `1440px` 左右）打开 `http://localhost:3000`
+- 再将浏览器宽度调整到 `1024px`，确认 profile、rating trend、roadmap、tag ability、rating buckets 仍可阅读和滚动
+- 检查 rating trend 悬停 tooltip 是否显示 contest 名称和 rating delta
+- 检查 roadmap 当前阶段高亮、完成阶段绿色态、未开始阶段弱化态是否正确
+- 如需留档，可分别截取一张桌面宽度和一张 `1024px` 宽度截图

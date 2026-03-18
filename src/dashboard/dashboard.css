@@ -1,56 +1,360 @@
 :root {
   color-scheme: dark;
   --bg: #0b1020;
-  --panel: #121a2f;
+  --bg-elevated: rgba(13, 19, 38, 0.9);
+  --panel: rgba(18, 26, 47, 0.92);
+  --panel-soft: rgba(24, 34, 58, 0.88);
   --border: #27304a;
+  --border-strong: #36456b;
   --text: #e5ecff;
   --muted: #93a1c6;
   --accent: #7c9cff;
+  --good: #56d364;
+  --warning: #f4c95d;
+  --danger: #ff7b72;
+  --shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body {
+  min-width: 320px;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
   font-family: Arial, Helvetica, sans-serif;
-  background: radial-gradient(circle at top, #16213e, var(--bg) 55%);
+  background:
+    radial-gradient(circle at top, rgba(41, 65, 119, 0.45), transparent 34%),
+    radial-gradient(circle at right, rgba(124, 156, 255, 0.14), transparent 26%),
+    var(--bg);
   color: var(--text);
 }
 
 #app {
-  display: grid;
-  place-items: center;
   min-height: 100vh;
   padding: 24px;
 }
 
-.panel {
-  width: min(640px, 100%);
-  padding: 32px;
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  background: rgba(18, 26, 47, 0.92);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.3);
+.dashboard-shell {
+  width: min(1280px, 100%);
+  margin: 0 auto;
 }
 
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 22px 24px 0;
+}
+
+.panel-body {
+  padding: 20px 24px 24px;
+}
+
+.panel-profile {
+  margin-bottom: 24px;
+}
+
+.panel-chart {
+  grid-column: span 7;
+}
+
+.panel-roadmap {
+  grid-column: span 5;
+}
+
+.panel-tags {
+  grid-column: span 7;
+}
+
+.panel-buckets {
+  grid-column: span 5;
+}
+
+.panel-kicker,
 .eyebrow {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-size: 12px;
 }
 
+.panel-title,
 h1 {
-  margin: 0 0 12px;
-  font-size: 40px;
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
 }
 
-.summary {
+.summary,
+.panel-empty {
   margin: 0;
   color: var(--muted);
   line-height: 1.6;
+}
+
+.panel-loading,
+.panel-error {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.profile-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.profile-identity {
+  min-width: 0;
+}
+
+.profile-rank {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.profile-rating {
+  margin: 0;
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.profile-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  flex: 1;
+}
+
+.metric {
+  padding: 16px 18px;
+  border: 1px solid rgba(124, 156, 255, 0.16);
+  border-radius: 18px;
+  background: var(--panel-soft);
+}
+
+.metric-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.metric-value {
+  font-size: 24px;
+}
+
+.trend-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.trend-grid {
+  stroke: rgba(147, 161, 198, 0.18);
+  stroke-width: 1;
+}
+
+.trend-line {
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trend-point {
+  fill: #ffffff;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.trend-axis-label,
+.trend-axis-caption {
+  fill: var(--muted);
+  font-size: 12px;
+}
+
+.roadmap-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.roadmap-stage {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(14, 21, 39, 0.88);
+}
+
+.roadmap-stage.is-current {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(124, 156, 255, 0.3);
+}
+
+.roadmap-stage.is-complete {
+  border-color: rgba(86, 211, 100, 0.4);
+  background: rgba(18, 45, 28, 0.85);
+}
+
+.roadmap-stage.is-not-started {
+  opacity: 0.74;
+}
+
+.roadmap-stage-index,
+.roadmap-stage-tag,
+.roadmap-stage-progress {
+  margin: 0;
+}
+
+.roadmap-stage-index,
+.roadmap-stage-tag {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.roadmap-stage-name {
+  margin: 8px 0 10px;
+  font-size: 17px;
+}
+
+.roadmap-stage-progress {
+  margin-top: 10px;
+  font-weight: 700;
+}
+
+.tag-list,
+.bucket-list {
+  display: grid;
+  gap: 14px;
+}
+
+.tag-row,
+.bucket-row {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(14, 21, 39, 0.82);
+}
+
+.tag-row-header,
+.tag-row-footer,
+.bucket-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tag-name,
+.tag-rate,
+.bucket-label,
+.bucket-count,
+.tag-count {
+  margin: 0;
+}
+
+.tag-name,
+.bucket-label {
+  font-size: 16px;
+}
+
+.tag-rate,
+.tag-count-attempted {
+  color: var(--muted);
+}
+
+.tag-bars {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 10px;
+}
+
+.tag-bar-track,
+.bucket-bar-track {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tag-bar-attempted .tag-bar-fill {
+  background: rgba(147, 161, 198, 0.55);
+}
+
+.tag-bar-accepted .tag-bar-fill {
+  background: linear-gradient(90deg, #5b8cff, #7c9cff);
+}
+
+.tag-bar-fill,
+.bucket-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.bucket-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 40px;
+}
+
+@media (max-width: 1120px) {
+  .panel-chart,
+  .panel-roadmap,
+  .panel-tags,
+  .panel-buckets {
+    grid-column: 1 / -1;
+  }
+
+  .profile-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 720px) {
+  #app {
+    padding: 16px;
+  }
+
+  .panel-header {
+    padding: 18px 18px 0;
+  }
+
+  .panel-body {
+    padding: 18px;
+  }
+
+  .profile-metrics,
+  .roadmap-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bucket-row {
+    grid-template-columns: 56px minmax(0, 1fr) 36px;
+  }
 }

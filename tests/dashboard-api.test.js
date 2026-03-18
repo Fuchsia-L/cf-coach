@@ -192,8 +192,8 @@ test('GET /api/rating-history returns one rating record per contest in time orde
     assert.equal(response.statusCode, 200);
     assert.deepEqual(JSON.parse(response.body), {
       items: [
-        { contestName: 'Round 1', timestamp: 100, newRating: 950 },
-        { contestName: 'Round 2', timestamp: 200, newRating: 1000 },
+        { contestName: 'Round 1', timestamp: 100, oldRating: 900, newRating: 950, delta: 50 },
+        { contestName: 'Round 2', timestamp: 200, oldRating: 950, newRating: 1000, delta: 50 },
       ],
     });
   });
