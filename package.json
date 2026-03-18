@@ -1,0 +1,9 @@
+{
+  "name": "cf-coach",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Codeforces training assistant CLI",
+  "scripts": {
+    "test": "node --test"
+  }
+}
