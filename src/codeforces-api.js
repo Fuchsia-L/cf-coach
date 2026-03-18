@@ -1,4 +1,6 @@
+const fs = require('fs');
 const https = require('https');
+const path = require('path');
 
 const API_ORIGIN = 'https://codeforces.com/api';
 const DEFAULT_THROTTLE_MS = 2000;
@@ -225,6 +227,26 @@ function createHttpsRequester({
   };
 }
 
+function createFixtureRequester(fixtureDir) {
+  return async (_url, method) => {
+    const fixturePath = path.join(fixtureDir, `${method}.json`);
+
+    try {
+      return JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        throw new Error(`缺少 API fixture：${fixturePath}`);
+      }
+
+      if (error instanceof SyntaxError) {
+        throw new Error(`API fixture JSON 无法解析：${fixturePath}`);
+      }
+
+      throw new Error(`读取 API fixture 失败：${fixturePath}，${error.message}`);
+    }
+  };
+}
+
 function withMetadata(data, metadata) {
   return {
     ...data,
@@ -273,11 +295,28 @@ function createCodeforcesApiClient({
   };
 }
 
+function createConfiguredCodeforcesApiClient(env = process.env) {
+  const fixtureDir = env.CF_COACH_API_FIXTURE_DIR;
+
+  if (!fixtureDir) {
+    return createCodeforcesApiClient();
+  }
+
+  return createCodeforcesApiClient({
+    requester: createFixtureRequester(fixtureDir),
+    throttle: {
+      wait: async () => {},
+    },
+  });
+}
+
 module.exports = {
   API_ORIGIN,
   DEFAULT_THROTTLE_MS,
   buildApiUrl,
   createCodeforcesApiClient,
+  createConfiguredCodeforcesApiClient,
+  createFixtureRequester,
   createHttpsRequester,
   createThrottle,
   getProblemKey,

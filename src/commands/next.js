@@ -1,3 +1,4 @@
+const { assertAnalyticsCacheReady } = require('../cache-health');
 const { loadFetchCaches } = require('../fetch-cache');
 const {
   buildNextReport,
@@ -17,7 +18,13 @@ async function runNextCommand(context) {
   }
 
   const caches = loadFetchCaches(context.paths.cacheDir);
-  const trainingConfig = loadTrainingResources();
+
+  assertAnalyticsCacheReady(caches, {
+    commandName: 'next',
+    handle: context.handle,
+  });
+
+  const trainingConfig = loadTrainingResources({ env: context.env });
   const options = {
     handle: context.handle,
     topic: parsed.options.topic,

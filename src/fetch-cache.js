@@ -19,10 +19,23 @@ function getCachePaths(cacheDir) {
 
 function readCacheJson(filePath) {
   try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return {
+      status: 'ok',
+      data: JSON.parse(fs.readFileSync(filePath, 'utf8')),
+    };
   } catch (error) {
-    if (error.code === 'ENOENT' || error instanceof SyntaxError) {
-      return null;
+    if (error.code === 'ENOENT') {
+      return {
+        status: 'missing',
+        data: null,
+      };
+    }
+
+    if (error instanceof SyntaxError) {
+      return {
+        status: 'malformed',
+        data: null,
+      };
     }
 
     throw new Error(`读取缓存失败：${filePath}，${error.message}`);
@@ -147,13 +160,35 @@ function mergeProblemsetCache(existing, incoming) {
 
 function loadFetchCaches(cacheDir) {
   const paths = getCachePaths(cacheDir);
+  const user = readCacheJson(paths.userPath);
+  const submissions = readCacheJson(paths.submissionsPath);
+  const rating = readCacheJson(paths.ratingPath);
+  const problems = readCacheJson(paths.problemsPath);
 
   return {
     paths,
-    user: readCacheJson(paths.userPath),
-    submissions: readCacheJson(paths.submissionsPath),
-    rating: readCacheJson(paths.ratingPath),
-    problems: readCacheJson(paths.problemsPath),
+    user: user.data,
+    submissions: submissions.data,
+    rating: rating.data,
+    problems: problems.data,
+    meta: {
+      user: {
+        path: paths.userPath,
+        status: user.status,
+      },
+      submissions: {
+        path: paths.submissionsPath,
+        status: submissions.status,
+      },
+      rating: {
+        path: paths.ratingPath,
+        status: rating.status,
+      },
+      problems: {
+        path: paths.problemsPath,
+        status: problems.status,
+      },
+    },
   };
 }
 

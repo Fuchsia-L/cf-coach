@@ -1,4 +1,4 @@
-const { createCodeforcesApiClient } = require('../codeforces-api');
+const { createConfiguredCodeforcesApiClient } = require('../codeforces-api');
 const {
   loadFetchCaches,
   mergeProblemsetCache,
@@ -13,20 +13,67 @@ function formatFetchSummary(summary) {
   return `fetch 完成：新提交 ${summary.newSubmissionCount}，新增 AC ${summary.newAcProblemCount}，rating 更新 ${summary.newRatingCount}，新增题目 ${summary.newProblemCount}。`;
 }
 
-async function runFetchCommand(context) {
-  if (!context.handle) {
-    throw new Error('缺少 handle，请通过 --handle 或配置文件提供');
+function validateHandle(handle) {
+  if (!handle || !String(handle).trim()) {
+    return '缺少 handle，请通过 --handle 或配置文件提供';
   }
 
-  const apiClient = context.apiClient || createCodeforcesApiClient();
+  if (/\s/.test(handle)) {
+    return `handle ${handle} 无效，不能包含空格`;
+  }
+
+  return null;
+}
+
+function formatFetchError(error, context) {
+  const message = error.message || String(error);
+
+  if (/user with handle .*not found/i.test(message)) {
+    return `handle ${context.handle} 不存在，请检查拼写后重试`;
+  }
+
+  const hasExistingCache = Boolean(
+    context.existingCaches?.user
+    || context.existingCaches?.submissions
+    || context.existingCaches?.rating
+    || context.existingCaches?.problems
+  );
+
+  if (hasExistingCache) {
+    return `${message}；现有缓存已保留`;
+  }
+
+  return message;
+}
+
+async function runFetchCommand(context) {
+  const handleError = validateHandle(context.handle);
+
+  if (handleError) {
+    throw new Error(handleError);
+  }
+
+  const apiClient = context.apiClient || createConfiguredCodeforcesApiClient(context.env);
   const existingCaches = loadFetchCaches(context.paths.cacheDir);
 
-  const [user, submissions, rating, problems] = await Promise.all([
-    apiClient.fetchUserInfo(context.handle),
-    apiClient.fetchUserStatus(context.handle),
-    apiClient.fetchUserRating(context.handle),
-    apiClient.fetchProblemsetProblems(),
-  ]);
+  let user;
+  let submissions;
+  let rating;
+  let problems;
+
+  try {
+    [user, submissions, rating, problems] = await Promise.all([
+      apiClient.fetchUserInfo(context.handle),
+      apiClient.fetchUserStatus(context.handle),
+      apiClient.fetchUserRating(context.handle),
+      apiClient.fetchProblemsetProblems(),
+    ]);
+  } catch (error) {
+    throw new Error(formatFetchError(error, {
+      handle: context.handle,
+      existingCaches,
+    }));
+  }
 
   const mergedUser = mergeUserCache(existingCaches.user, user);
   const mergedSubmissions = mergeSubmissionsCache(existingCaches.submissions, submissions);

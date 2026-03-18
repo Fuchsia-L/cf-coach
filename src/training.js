@@ -439,17 +439,41 @@ function getDefaultTrainingPaths(baseDir = path.resolve(__dirname, '..')) {
   };
 }
 
+function readTrainingMarkdown(filePath, label) {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    throw new Error(`读取 ${label} 失败：${filePath}，${error.message}`);
+  }
+}
+
 function loadTrainingResources(options = {}) {
+  const env = options.env || process.env;
+  const defaultPaths = getDefaultTrainingPaths(options.baseDir);
   const paths = {
-    ...getDefaultTrainingPaths(options.baseDir),
+    ...defaultPaths,
+    mapPath: env.CF_COACH_MAP_PATH || defaultPaths.mapPath,
+    guidePath: env.CF_COACH_GUIDE_PATH || defaultPaths.guidePath,
     ...(options.paths || {}),
   };
-  const roadmapMarkdown = fs.readFileSync(paths.mapPath, 'utf8');
-  const guideMarkdown = fs.readFileSync(paths.guidePath, 'utf8');
-  const guide = parseGuideMarkdown(guideMarkdown);
-  const roadmap = parseMapMarkdown(roadmapMarkdown, {
-    defaultCompletion: guide.completion,
-  });
+  const roadmapMarkdown = readTrainingMarkdown(paths.mapPath, 'roadmap');
+  const guideMarkdown = readTrainingMarkdown(paths.guidePath, 'guide');
+  let guide;
+  let roadmap;
+
+  try {
+    guide = parseGuideMarkdown(guideMarkdown);
+  } catch (error) {
+    throw new Error(`解析训练指南失败：${paths.guidePath}，${error.message}`);
+  }
+
+  try {
+    roadmap = parseMapMarkdown(roadmapMarkdown, {
+      defaultCompletion: guide.completion,
+    });
+  } catch (error) {
+    throw new Error(`解析训练路线失败：${paths.mapPath}，${error.message}`);
+  }
 
   return {
     paths,
