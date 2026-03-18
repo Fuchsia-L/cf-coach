@@ -375,7 +375,7 @@ test('bottom panels render clear empty and error states', () => {
   assert.match(html, /Submissions API unavailable/);
 });
 
-test('renderDashboard includes sticky profile, collapsible panel hooks, and tooltip markers', () => {
+test('renderDashboard includes masonry layout, readable typography hooks, sticky profile, and tooltip markers', () => {
   const html = renderDashboard(
     createDashboardFixture(),
     createDashboardUiState({
@@ -392,8 +392,14 @@ test('renderDashboard includes sticky profile, collapsible panel hooks, and tool
     })
   );
 
+  assert.match(html, /data-dashboard-layout="masonry"/);
+  assert.match(html, /data-dashboard-column="primary"/);
+  assert.match(html, /data-dashboard-column="secondary"/);
   assert.match(html, /data-dashboard-profile-pinned="true"/);
   assert.match(html, /data-dashboard-sticky="profile"/);
+  assert.match(html, /panel-kicker-readable/);
+  assert.match(html, /panel-title-readable/);
+  assert.match(html, /chart-axis-label/);
   assert.match(html, /data-panel="roadmap"[^>]*data-panel-collapsible="true"[^>]*data-panel-expanded="false"/);
   assert.match(html, /data-dashboard-toggle="roadmap"/);
   assert.match(html, /data-panel-body="roadmap" hidden/);

@@ -148,12 +148,24 @@ test('dashboard browser smoke test loads the page and renders all core panels fr
 
   try {
     const rootResponse = await request(port, '/');
+    const cssResponse = await request(port, '/assets/dashboard.css');
     const scriptResponse = await request(port, '/assets/dashboard.js');
 
     assert.equal(rootResponse.statusCode, 200);
+    assert.equal(cssResponse.statusCode, 200);
     assert.equal(scriptResponse.statusCode, 200);
     assert.match(rootResponse.body, /id="app"/);
+    assert.match(rootResponse.body, /\/assets\/dashboard\.css/);
     assert.match(rootResponse.body, /\/assets\/dashboard\.js/);
+    assert.match(cssResponse.body, /body\s*\{[\s\S]*font-size:\s*17px;/);
+    assert.match(cssResponse.body, /\.dashboard-grid\s*\{[\s\S]*gap:\s*30px;/);
+    assert.match(cssResponse.body, /\.panel-body\s*\{[\s\S]*padding:\s*24px 26px 26px;/);
+    assert.match(cssResponse.body, /\.panel-kicker,[\s\S]*font-size:\s*13px;/);
+    assert.match(cssResponse.body, /\.panel-title,[\s\S]*font-size:\s*30px;/);
+    assert.match(cssResponse.body, /\.chart-axis-label\s*\{[\s\S]*font-size:\s*13px;/);
+    assert.match(cssResponse.body, /\.panel\[data-dashboard-sticky="profile"\]\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*24px;/);
+    assert.match(cssResponse.body, /\.panel:hover\s*\{[\s\S]*transform:\s*translateY\(-3px\);/);
+    assert.match(cssResponse.body, /\.problem-card:hover\s*\{[\s\S]*transform:\s*translateY\(-3px\);/);
 
     const root = {
       attributes: {},
@@ -189,7 +201,12 @@ test('dashboard browser smoke test loads the page and renders all core panels fr
 
     assert.equal(root.getAttribute('data-dashboard-ready'), 'true');
     assert.equal(root.getAttribute('data-dashboard-state'), 'ready');
+    assert.match(root.innerHTML, /data-dashboard-layout="masonry"/);
+    assert.match(root.innerHTML, /data-dashboard-column="primary"/);
+    assert.match(root.innerHTML, /data-dashboard-column="secondary"/);
     assert.match(root.innerHTML, /data-panel="profile"/);
+    assert.match(root.innerHTML, /class="profile-bar"/);
+    assert.match(root.innerHTML, /data-dashboard-sticky="profile"/);
     assert.match(root.innerHTML, /data-panel="rating-trend"/);
     assert.match(root.innerHTML, /data-panel="roadmap"/);
     assert.match(root.innerHTML, /data-panel="tag-ability"/);
@@ -197,6 +214,9 @@ test('dashboard browser smoke test loads the page and renders all core panels fr
     assert.match(root.innerHTML, /data-panel="weak-analysis"/);
     assert.match(root.innerHTML, /data-panel="next-problem"/);
     assert.match(root.innerHTML, /data-panel="submission-timeline"/);
+    assert.match(root.innerHTML, /panel-title-readable/);
+    assert.match(root.innerHTML, /panel-kicker-readable/);
+    assert.match(root.innerHTML, /chart-axis-label/);
     assert.match(root.innerHTML, /Round 1/);
     assert.match(root.innerHTML, /Stage 20/);
   } finally {

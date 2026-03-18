@@ -451,8 +451,8 @@
       `<section class="${className}" data-panel="${escapeHtml(panelName)}"${collapsibleAttributes}${profileStickyMarker}>`,
       '  <header class="panel-header">',
       '    <div class="panel-header-copy">',
-      `      <p class="panel-kicker">${escapeHtml(subtitle)}</p>`,
-      `      <h2 class="panel-title">${escapeHtml(title)}</h2>`,
+      `      <p class="panel-kicker panel-kicker-readable">${escapeHtml(subtitle)}</p>`,
+      `      <h2 class="panel-title panel-title-readable">${escapeHtml(title)}</h2>`,
       '    </div>',
       `    ${toggleMarkup}`,
       '  </header>',
@@ -545,8 +545,8 @@
 
       return [
         `<line class="trend-grid" x1="44" y1="${y}" x2="740" y2="${y}"></line>`,
-        `<text class="trend-axis-label" x="8" y="${y + 4}">${escapeHtml(formatNumber(label))}</text>`,
-        index === 2 ? '<text class="trend-axis-caption" x="44" y="252">First contest</text><text class="trend-axis-caption" x="662" y="252">Latest contest</text>' : '',
+        `<text class="trend-axis-label chart-axis-label" x="8" y="${y + 4}">${escapeHtml(formatNumber(label))}</text>`,
+        index === 2 ? '<text class="trend-axis-caption chart-axis-label" x="44" y="252">First contest</text><text class="trend-axis-caption chart-axis-label" x="662" y="252">Latest contest</text>' : '',
       ].join('');
     }).join('');
 
@@ -834,13 +834,13 @@
 
       return [
         `<line class="timeline-grid" x1="44" y1="${y}" x2="740" y2="${y}"></line>`,
-        `<text class="timeline-axis-label" x="8" y="${y + 4}">${escapeHtml(formatNumber(label))}</text>`,
+        `<text class="timeline-axis-label chart-axis-label" x="8" y="${y + 4}">${escapeHtml(formatNumber(label))}</text>`,
       ].join('');
     }).join('');
 
     const captions = [
-      `<text class="timeline-axis-caption" x="44" y="272">${escapeHtml(formatTimestamp(geometry.minTimestamp))}</text>`,
-      `<text class="timeline-axis-caption timeline-axis-caption-end" x="740" y="272">${escapeHtml(formatTimestamp(geometry.maxTimestamp))}</text>`,
+      `<text class="timeline-axis-caption chart-axis-label" x="44" y="272">${escapeHtml(formatTimestamp(geometry.minTimestamp))}</text>`,
+      `<text class="timeline-axis-caption timeline-axis-caption-end chart-axis-label" x="740" y="272">${escapeHtml(formatTimestamp(geometry.maxTimestamp))}</text>`,
     ].join('');
 
     const points = geometry.points.map((point, index) => [
@@ -906,21 +906,7 @@
 
   function renderDashboard(data, uiState = createDashboardUiState()) {
     const tooltipState = uiState?.tooltip || {};
-
-    return [
-      `<div class="dashboard-shell" data-dashboard-profile-pinned="${uiState?.profilePinned === true ? 'true' : 'false'}" data-dashboard-tooltip-visible="${tooltipState.visible === true ? 'true' : 'false'}">`,
-      renderPanelResource(data.profile, {
-        panelName: 'profile',
-        title: 'Profile',
-        subtitle: 'Profile',
-        className: 'panel-profile',
-        loadingMessage: 'Loading profile summary...',
-        errorMessage: 'Profile data is unavailable.',
-        renderer(profile) {
-          return renderProfileBar(profile, uiState);
-        },
-      }),
-      '<div class="dashboard-grid">',
+    const primaryColumnPanels = [
       renderPanelResource(data.ratingHistory, {
         panelName: 'rating-trend',
         title: 'Rating Trend',
@@ -929,17 +915,6 @@
         loadingMessage: 'Loading rating history...',
         errorMessage: 'Rating history is unavailable.',
         renderer: renderRatingTrendPanel,
-      }),
-      renderPanelResource(data.roadmap, {
-        panelName: 'roadmap',
-        title: 'Roadmap',
-        subtitle: '20 stages',
-        className: 'panel-roadmap',
-        loadingMessage: 'Loading roadmap progress...',
-        errorMessage: 'Roadmap data is unavailable.',
-        renderer(roadmap) {
-          return renderRoadmapPanel(roadmap, uiState);
-        },
       }),
       renderPanelResource(data.tagStats, {
         panelName: 'tag-ability',
@@ -950,17 +925,6 @@
         errorMessage: 'Tag performance is unavailable.',
         renderer(tagStats) {
           return renderTagAbilityPanel(tagStats, uiState);
-        },
-      }),
-      renderPanelResource(data.ratingBuckets, {
-        panelName: 'rating-buckets',
-        title: 'Rating Buckets',
-        subtitle: 'Accepted problems',
-        className: 'panel-buckets',
-        loadingMessage: 'Loading rating buckets...',
-        errorMessage: 'Rating bucket data is unavailable.',
-        renderer(ratingBuckets) {
-          return renderRatingBucketPanel(ratingBuckets, uiState);
         },
       }),
       renderPanelResource(data.weak, {
@@ -974,17 +938,6 @@
           return renderWeakAnalysisPanel(weak, uiState);
         },
       }),
-      renderPanelResource(data.next, {
-        panelName: 'next-problem',
-        title: 'Next Problem',
-        subtitle: 'Recommendations',
-        className: 'panel-next',
-        loadingMessage: 'Loading recommendations...',
-        errorMessage: 'Recommendations are unavailable.',
-        renderer(next) {
-          return renderNextProblemPanel(next, uiState);
-        },
-      }),
       renderPanelResource(data.submissions, {
         panelName: 'submission-timeline',
         title: 'Submission Timeline',
@@ -996,6 +949,59 @@
           return renderSubmissionTimelinePanel(submissions, uiState);
         },
       }),
+    ].join('');
+    const secondaryColumnPanels = [
+      renderPanelResource(data.roadmap, {
+        panelName: 'roadmap',
+        title: 'Roadmap',
+        subtitle: '20 stages',
+        className: 'panel-roadmap',
+        loadingMessage: 'Loading roadmap progress...',
+        errorMessage: 'Roadmap data is unavailable.',
+        renderer(roadmap) {
+          return renderRoadmapPanel(roadmap, uiState);
+        },
+      }),
+      renderPanelResource(data.ratingBuckets, {
+        panelName: 'rating-buckets',
+        title: 'Rating Buckets',
+        subtitle: 'Accepted problems',
+        className: 'panel-buckets',
+        loadingMessage: 'Loading rating buckets...',
+        errorMessage: 'Rating bucket data is unavailable.',
+        renderer(ratingBuckets) {
+          return renderRatingBucketPanel(ratingBuckets, uiState);
+        },
+      }),
+      renderPanelResource(data.next, {
+        panelName: 'next-problem',
+        title: 'Next Problem',
+        subtitle: 'Recommendations',
+        className: 'panel-next',
+        loadingMessage: 'Loading recommendations...',
+        errorMessage: 'Recommendations are unavailable.',
+        renderer(next) {
+          return renderNextProblemPanel(next, uiState);
+        },
+      }),
+    ].join('');
+
+    return [
+      `<div class="dashboard-shell dashboard-shell-readable" data-dashboard-layout="masonry" data-dashboard-profile-pinned="${uiState?.profilePinned === true ? 'true' : 'false'}" data-dashboard-tooltip-visible="${tooltipState.visible === true ? 'true' : 'false'}">`,
+      renderPanelResource(data.profile, {
+        panelName: 'profile',
+        title: 'Profile',
+        subtitle: 'Profile',
+        className: 'panel-profile',
+        loadingMessage: 'Loading profile summary...',
+        errorMessage: 'Profile data is unavailable.',
+        renderer(profile) {
+          return renderProfileBar(profile, uiState);
+        },
+      }),
+      '<div class="dashboard-grid dashboard-grid-masonry">',
+      `  <div class="dashboard-column dashboard-column-primary" data-dashboard-column="primary">${primaryColumnPanels}</div>`,
+      `  <div class="dashboard-column dashboard-column-secondary" data-dashboard-column="secondary">${secondaryColumnPanels}</div>`,
       '</div>',
       `<div class="dashboard-tooltip-layer" data-dashboard-tooltip-layer data-visible="${tooltipState.visible === true ? 'true' : 'false'}" aria-hidden="${tooltipState.visible === true ? 'false' : 'true'}">${escapeHtml(tooltipState.content || '')}</div>`,
       '</div>',

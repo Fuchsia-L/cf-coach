@@ -12,7 +12,7 @@
   --good: #56d364;
   --warning: #f4c95d;
   --danger: #ff7b72;
-  --shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  --shadow: 0 24px 72px rgba(0, 0, 0, 0.42);
 }
 
 * {
@@ -28,6 +28,8 @@ body {
   margin: 0;
   min-height: 100vh;
   font-family: Arial, Helvetica, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
   background:
     radial-gradient(circle at top, rgba(46, 32, 72, 0.55), transparent 34%),
     radial-gradient(circle at right, rgba(138, 125, 179, 0.1), transparent 26%),
@@ -42,34 +44,49 @@ body {
 
 .dashboard-shell {
   position: relative;
-  width: min(1280px, 100%);
+  width: min(1360px, 100%);
   margin: 0 auto;
 }
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 20px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
+  gap: 30px;
+  align-items: start;
+}
+
+.dashboard-column {
+  display: grid;
+  gap: 30px;
+  align-content: start;
+  min-width: 0;
 }
 
 .panel {
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: 24px;
   background: var(--panel);
   box-shadow: var(--shadow);
   overflow: hidden;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease, background 220ms ease;
+}
+
+.panel:hover {
+  border-color: rgba(138, 125, 179, 0.42);
+  box-shadow: 0 30px 78px rgba(0, 0, 0, 0.46);
+  transform: translateY(-3px);
 }
 
 .panel-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  padding: 18px 20px 0;
+  gap: 18px;
+  padding: 24px 26px 0;
 }
 
 .panel-body {
-  padding: 16px 20px 20px;
+  padding: 24px 26px 26px;
 }
 
 .panel-header-copy {
@@ -87,11 +104,11 @@ body {
   color: var(--text);
   padding: 8px 12px;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease, box-shadow 180ms ease;
 }
 
 .panel-toggle:hover,
@@ -107,58 +124,36 @@ body {
 }
 
 .panel-profile {
-  margin-bottom: 20px;
+  margin-bottom: 30px;
 }
 
 .panel[data-dashboard-sticky="profile"] {
   position: sticky;
-  top: 20px;
+  top: 24px;
   z-index: 3;
+  backdrop-filter: blur(14px);
 }
 
 .dashboard-shell[data-dashboard-profile-pinned="true"] .panel[data-dashboard-sticky="profile"] {
   border-color: rgba(138, 125, 179, 0.4);
-  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.4);
-}
-
-.panel-chart {
-  grid-column: span 7;
-}
-
-.panel-roadmap {
-  grid-column: span 5;
-}
-
-.panel-tags {
-  grid-column: span 7;
-}
-
-.panel-buckets {
-  grid-column: span 5;
-}
-
-.panel-weak,
-.panel-next {
-  grid-column: span 6;
-}
-
-.panel-submissions {
-  grid-column: 1 / -1;
+  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.42);
 }
 
 .panel-kicker,
-.eyebrow {
+.eyebrow,
+.panel-kicker-readable {
   margin: 0 0 8px;
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .panel-title,
-h1 {
+h1,
+.panel-title-readable {
   margin: 0;
-  font-size: 26px;
+  font-size: 30px;
   line-height: 1.15;
 }
 
@@ -180,7 +175,7 @@ h1 {
 }
 
 .panel-hint {
-  margin: 0 0 14px;
+  margin: 0 0 18px;
   color: var(--muted);
   line-height: 1.5;
 }
@@ -195,7 +190,7 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 24px;
 }
 
 .profile-identity {
@@ -205,12 +200,12 @@ h1 {
 .profile-rank {
   margin: 0 0 8px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .profile-rating {
   margin: 0;
-  font-size: 40px;
+  font-size: 44px;
   font-weight: 700;
   letter-spacing: -0.03em;
 }
@@ -218,14 +213,14 @@ h1 {
 .profile-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
   flex: 1;
 }
 
 .metric {
-  padding: 14px 16px;
+  padding: 16px 18px;
   border: 1px solid rgba(138, 125, 179, 0.16);
-  border-radius: 18px;
+  border-radius: 20px;
   background: var(--panel-soft);
 }
 
@@ -233,11 +228,11 @@ h1 {
   display: block;
   margin-bottom: 8px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .metric-value {
-  font-size: 22px;
+  font-size: 24px;
 }
 
 .trend-chart {
@@ -265,21 +260,22 @@ h1 {
 }
 
 .trend-axis-label,
-.trend-axis-caption {
+.trend-axis-caption,
+.chart-axis-label {
   fill: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .roadmap-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 14px;
 }
 
 .roadmap-stage {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 20px;
   background: rgba(18, 16, 28, 0.88);
 }
 
@@ -306,12 +302,12 @@ h1 {
 .roadmap-stage-index,
 .roadmap-stage-tag {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .roadmap-stage-name {
   margin: 8px 0 10px;
-  font-size: 17px;
+  font-size: 18px;
 }
 
 .roadmap-stage-progress {
@@ -322,36 +318,38 @@ h1 {
 .tag-list,
 .bucket-list {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .insight-stack,
 .insight-list,
 .problem-card-grid {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .insight-title {
   margin: 0 0 12px;
-  font-size: 15px;
+  font-size: 16px;
   color: var(--muted);
 }
 
 .insight-card,
 .problem-card {
   display: block;
-  padding: 14px 16px;
+  padding: 18px 18px;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 20px;
   background: rgba(18, 16, 28, 0.82);
   color: var(--text);
   text-decoration: none;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease, background 220ms ease;
 }
 
 .problem-card:hover {
   border-color: var(--accent);
-  transform: translateY(-1px);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.32);
+  transform: translateY(-3px);
 }
 
 .trend-point-group,
@@ -361,9 +359,8 @@ h1 {
 
 .trend-point,
 .timeline-point,
-.problem-card,
-.panel {
-  transition: transform 120ms ease, border-color 120ms ease, stroke-width 120ms ease, r 120ms ease;
+.problem-card {
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, stroke-width 220ms ease, box-shadow 220ms ease, r 220ms ease;
 }
 
 .trend-point-group:hover .trend-point,
@@ -385,7 +382,7 @@ h1 {
 
 .insight-card-title,
 .problem-card-title {
-  font-size: 17px;
+  font-size: 18px;
 }
 
 .insight-card-copy,
@@ -399,7 +396,7 @@ h1 {
 .problem-card-label {
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .problem-card-tags {
@@ -421,7 +418,7 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .timeline-legend-item {
@@ -429,7 +426,7 @@ h1 {
   align-items: center;
   gap: 8px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .timeline-legend-dot {
@@ -458,7 +455,7 @@ h1 {
 .timeline-axis-label,
 .timeline-axis-caption {
   fill: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .timeline-axis-caption-end {
@@ -467,9 +464,9 @@ h1 {
 
 .tag-row,
 .bucket-row {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 20px;
   background: rgba(18, 16, 28, 0.82);
 }
 
@@ -492,7 +489,7 @@ h1 {
 
 .tag-name,
 .bucket-label {
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .tag-rate,
@@ -554,7 +551,7 @@ h1 {
   pointer-events: none;
   opacity: 0;
   transform: translateY(4px);
-  transition: opacity 120ms ease, transform 120ms ease;
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .dashboard-tooltip-layer[data-visible="true"] {
@@ -562,15 +559,13 @@ h1 {
   transform: translateY(0);
 }
 
-@media (max-width: 1120px) {
-  .panel-chart,
-  .panel-roadmap,
-  .panel-tags,
-  .panel-buckets,
-  .panel-weak,
-  .panel-next,
-  .panel-submissions {
-    grid-column: 1 / -1;
+@media (max-width: 1023px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-column {
+    gap: 24px;
   }
 
   .profile-bar {
@@ -585,13 +580,13 @@ h1 {
   }
 
   .panel-header {
-    padding: 16px 16px 0;
+    padding: 18px 18px 0;
     flex-direction: column;
     align-items: stretch;
   }
 
   .panel-body {
-    padding: 14px 16px 16px;
+    padding: 18px 18px 18px;
   }
 
   .profile-metrics,
