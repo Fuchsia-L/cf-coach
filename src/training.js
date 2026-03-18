@@ -1,5 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const {
+  isFiniteNumber,
+  normalizeString,
+  normalizeTag,
+  normalizeTags,
+} = require('./utils');
 
 const {
   createProblemLookup,
@@ -35,24 +41,6 @@ const DEFAULT_GUIDE = {
     trigger: 'solved-prerequisites-without-anchor-revisit',
   },
 };
-
-function isFiniteNumber(value) {
-  return Number.isFinite(value);
-}
-
-function normalizeString(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeTag(tag) {
-  return normalizeString(tag).toLowerCase();
-}
-
-function normalizeTags(tags) {
-  return Array.from(new Set((Array.isArray(tags) ? tags : [])
-    .map((tag) => normalizeTag(tag))
-    .filter(Boolean)));
-}
 
 function normalizeProblemKey(value) {
   const text = normalizeString(value).toUpperCase();

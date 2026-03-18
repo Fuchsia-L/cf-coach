@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   buildNextReport,
   buildReviewRecommendations,
+  parseNextCommandArgs,
   scoreTagCombinationSimilarity,
   selectAnchorRatingBand,
   selectProblemForTarget,
@@ -156,6 +157,16 @@ test('scoreTagCombinationSimilarity ranks exact combinations above single-tag ma
   const singleTag = scoreTagCombinationSimilarity(['greedy', 'sortings'], ['greedy'], 'greedy');
 
   assert.ok(exactCombo > singleTag);
+});
+
+test('parseNextCommandArgs trims and lowercases topic values after helper extraction', () => {
+  assert.deepEqual(parseNextCommandArgs(['--topic', '  GrEeDy  ']), {
+    options: {
+      topic: 'greedy',
+      review: false,
+    },
+    error: null,
+  });
 });
 
 test('buildNextReport infers the current topic and excludes solved problems from recommendations', () => {

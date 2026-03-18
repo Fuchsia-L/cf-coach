@@ -187,6 +187,40 @@ test('aggregateTagStats computes AC counts, attempts, and pass rates from mixed 
   ]);
 });
 
+test('aggregateTagStats preserves case-sensitive tags while trimming duplicates after helper extraction', () => {
+  const stats = aggregateTagStats([
+    {
+      problemKey: '100A',
+      tags: [' Math ', 'Math', 'math', ''],
+      accepted: false,
+    },
+    {
+      problemKey: '100B',
+      tags: ['math ', ' DP '],
+      accepted: true,
+    },
+  ]);
+
+  assert.deepEqual(stats.find((entry) => entry.tag === 'Math'), {
+    tag: 'Math',
+    attemptedCount: 1,
+    acCount: 0,
+    passRate: 0,
+  });
+  assert.deepEqual(stats.find((entry) => entry.tag === 'math'), {
+    tag: 'math',
+    attemptedCount: 2,
+    acCount: 1,
+    passRate: 0.5,
+  });
+  assert.deepEqual(stats.find((entry) => entry.tag === 'DP'), {
+    tag: 'DP',
+    attemptedCount: 1,
+    acCount: 1,
+    passRate: 1,
+  });
+});
+
 test('classifyRatingBucket, aggregateRatingBuckets, and renderRatingTrend use stable bucket/trend rules', () => {
   assert.equal(classifyRatingBucket(750), '800');
   assert.equal(classifyRatingBucket(800), '800');

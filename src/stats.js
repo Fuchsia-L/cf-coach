@@ -1,10 +1,15 @@
 const TREND_LIMIT = 8;
 const TREND_BAR_WIDTH = 20;
 const RATING_BUCKET_LABELS = ['800', '900', '1000', '1100', '1200', '1300', '1400', '1500', '1600+'];
+const {
+  formatRating,
+  getCacheHandle,
+  hasAnyCache,
+  isFiniteNumber,
+  normalizeTags,
+} = require('./utils');
 
-function isFiniteNumber(value) {
-  return Number.isFinite(value);
-}
+const PRESERVE_TAG_CASE = Object.freeze({ lowerCase: false });
 
 function dedupeSubmissions(items = []) {
   const seenIds = new Set();
@@ -41,20 +46,12 @@ function dedupeSubmissions(items = []) {
   });
 }
 
-function normalizeTags(tags) {
-  return Array.from(
-    new Set(
-      (Array.isArray(tags) ? tags : []).filter((tag) => typeof tag === 'string' && tag.trim()).map((tag) => tag.trim())
-    )
-  );
-}
-
 function getProblemMeta(problem = {}, problemKey = null) {
   return {
     key: problem.key || problemKey || null,
     name: problem.name || null,
     rating: isFiniteNumber(problem.rating) ? problem.rating : null,
-    tags: normalizeTags(problem.tags),
+    tags: normalizeTags(problem.tags, PRESERVE_TAG_CASE),
   };
 }
 
@@ -141,7 +138,7 @@ function aggregateTagStats(problemAttempts = []) {
   const tagStats = new Map();
 
   for (const problem of Array.isArray(problemAttempts) ? problemAttempts : []) {
-    for (const tag of normalizeTags(problem.tags)) {
+    for (const tag of normalizeTags(problem.tags, PRESERVE_TAG_CASE)) {
       if (!tagStats.has(tag)) {
         tagStats.set(tag, {
           tag,
@@ -301,14 +298,6 @@ function formatPercent(rate) {
   return `${Math.round(rate * 100)}%`;
 }
 
-function getCacheHandle(caches = {}, fallbackHandle = null) {
-  return caches.user?.handle || caches.submissions?.handle || caches.rating?.handle || fallbackHandle || null;
-}
-
-function hasAnyCache(caches = {}) {
-  return Boolean(caches.user || caches.submissions || caches.rating || caches.problems);
-}
-
 function buildStatsReport(caches = {}, options = {}) {
   if (!hasAnyCache(caches)) {
     throw new Error('缺少本地缓存，请先运行 fetch');
@@ -340,10 +329,6 @@ function buildStatsReport(caches = {}, options = {}) {
       attemptedProblemCount: problemAttempts.length,
     },
   };
-}
-
-function formatRating(value) {
-  return value === null || value === undefined ? 'N/A' : String(value);
 }
 
 function formatStatsReport(report) {

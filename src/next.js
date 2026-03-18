@@ -1,40 +1,20 @@
 const {
+  formatRating,
+  getCacheHandle,
+  hasAnyCache,
+  isFiniteNumber,
+  normalizeString,
+  normalizeTag,
+  normalizeTags,
+} = require('./utils');
+
+const {
   createProblemLookup,
   dedupeSubmissions,
   deriveProblemAttempts,
   getCurrentRating,
 } = require('./stats');
 const { buildProgressModel, DEFAULT_GUIDE } = require('./training');
-
-function isFiniteNumber(value) {
-  return Number.isFinite(value);
-}
-
-function normalizeString(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeTag(tag) {
-  return normalizeString(tag).toLowerCase();
-}
-
-function normalizeTags(tags) {
-  return Array.from(new Set((Array.isArray(tags) ? tags : [])
-    .map((tag) => normalizeTag(tag))
-    .filter(Boolean)));
-}
-
-function hasAnyCache(caches = {}) {
-  return Boolean(caches.user || caches.submissions || caches.rating || caches.problems);
-}
-
-function getCacheHandle(caches = {}, fallbackHandle = null) {
-  return caches.user?.handle || caches.submissions?.handle || caches.rating?.handle || fallbackHandle || null;
-}
-
-function formatRating(value) {
-  return value === null || value === undefined ? 'N/A' : String(value);
-}
 
 function formatProblem(problem) {
   const tags = normalizeTags(problem.tags);

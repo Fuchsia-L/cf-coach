@@ -132,6 +132,17 @@ test('parseMapMarkdown parses ordered stages and metadata from valid markdown', 
   });
 });
 
+test('parseMapMarkdown lowercases and deduplicates stage tags after helper extraction', () => {
+  const roadmap = parseMapMarkdown(`
+## Stage 1 - Mixed Tags
+- Tags:  Greedy , greedy, DP , dp
+`, {
+    defaultCompletion: SMALL_GUIDE.completion,
+  });
+
+  assert.deepEqual(roadmap.stages[0].tags, ['greedy', 'dp']);
+});
+
 test('parseMapMarkdown rejects malformed roadmap markdown', () => {
   assert.throws(() => parseMapMarkdown(`
 ## Stage 1 - Broken

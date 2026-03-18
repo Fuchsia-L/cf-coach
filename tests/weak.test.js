@@ -115,6 +115,23 @@ test('detectWeakTags applies thresholds and sorts by severity', () => {
   assert.equal(weakTags[1].acCount, 1);
 });
 
+test('detectWeakTags lowercases and deduplicates mixed-case tags after helper extraction', () => {
+  const weakTags = detectWeakTags([
+    { problemKey: 'A', tags: [' Greedy ', 'gReEdY'], attemptCount: 2, accepted: false },
+    { problemKey: 'B', tags: ['GREEDY'], attemptCount: 1, accepted: false },
+    { problemKey: 'C', tags: ['greedy'], attemptCount: 1, accepted: true },
+  ]);
+
+  assert.equal(weakTags.length, 1);
+  assert.equal(weakTags[0].tag, 'greedy');
+  assert.equal(weakTags[0].attemptedCount, 3);
+  assert.equal(weakTags[0].acCount, 1);
+  assert.equal(weakTags[0].submissionCount, 4);
+  assert.equal(weakTags[0].failedCount, 2);
+  assert.equal(weakTags[0].passRate, 1 / 3);
+  assert.ok(weakTags[0].priority > 0);
+});
+
 test('detectWeakRatingRanges finds low-conversion buckets with repeated failures', () => {
   const weakBuckets = detectWeakRatingRanges([
     { problemKey: 'A', rating: 1200, attemptCount: 3, accepted: false },
