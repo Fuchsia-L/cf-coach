@@ -93,7 +93,7 @@ async function runServeCommand(context) {
   }
 
   const serverFactory = context.createDashboardServer || createDashboardServer;
-  const serverRef = serverFactory();
+  const serverRef = serverFactory({ env: context.env });
   const activePort = await serverRef.listen(parsed.port);
 
   writeLine(context.stdout, `Dashboard: http://localhost:${activePort}`);

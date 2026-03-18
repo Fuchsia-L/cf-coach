@@ -2,6 +2,8 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 
+const { createDashboardDataLayer } = require('./dashboard-data');
+
 const DASHBOARD_ASSETS = {
   '/assets/dashboard.css': {
     contentType: 'text/css; charset=utf-8',
@@ -64,8 +66,19 @@ function serveStaticAsset(response, asset) {
   response.end(body);
 }
 
-function createDashboardRequestHandler() {
+function createDashboardRequestHandler(options = {}) {
   const htmlShell = renderDashboardShell();
+  const dataLayer = options.dataLayer || createDashboardDataLayer(options);
+  const apiRoutes = {
+    '/api/profile': () => dataLayer.getProfile(),
+    '/api/rating-history': () => dataLayer.getRatingHistory(),
+    '/api/tag-stats': () => dataLayer.getTagStats(),
+    '/api/rating-buckets': () => dataLayer.getRatingBuckets(),
+    '/api/roadmap': () => dataLayer.getRoadmap(),
+    '/api/weak': () => dataLayer.getWeak(),
+    '/api/next': () => dataLayer.getNext(),
+    '/api/submissions': () => dataLayer.getSubmissions(),
+  };
 
   return (request, response) => {
     const requestUrl = new URL(request.url || '/', 'http://127.0.0.1');
@@ -83,8 +96,16 @@ function createDashboardRequestHandler() {
       return;
     }
 
+    const apiRoute = apiRoutes[pathname];
+
+    if (apiRoute) {
+      const result = apiRoute();
+      writeJson(response, result.statusCode, result.payload);
+      return;
+    }
+
     if (pathname.startsWith('/api/')) {
-      writeJson(response, 404, { error: 'Not found' });
+      writeJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found' } });
       return;
     }
 
@@ -92,9 +113,9 @@ function createDashboardRequestHandler() {
   };
 }
 
-function createDashboardServer() {
+function createDashboardServer(options = {}) {
   const sockets = new Set();
-  const server = http.createServer(createDashboardRequestHandler());
+  const server = http.createServer(createDashboardRequestHandler(options));
 
   server.on('connection', (socket) => {
     sockets.add(socket);

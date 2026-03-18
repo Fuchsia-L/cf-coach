@@ -129,7 +129,12 @@ test('dashboard server returns HTML shell, assets, and JSON 404 for missing API 
     const apiResponse = await request(port, '/api/missing');
     assert.equal(apiResponse.statusCode, 404);
     assert.match(apiResponse.headers['content-type'], /^application\/json/);
-    assert.deepEqual(JSON.parse(apiResponse.body), { error: 'Not found' });
+    assert.deepEqual(JSON.parse(apiResponse.body), {
+      error: {
+        code: 'NOT_FOUND',
+        message: 'Not found',
+      },
+    });
   } finally {
     await serverRef.close();
   }
