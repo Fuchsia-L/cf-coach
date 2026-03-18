@@ -3,6 +3,7 @@ const COMMANDS = [
   'stats',
   'weak',
   'next',
+  'serve',
   'log',
   'progress',
   'edit',

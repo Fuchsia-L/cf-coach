@@ -3,6 +3,7 @@ const { parseArgs } = require('./args');
 const { loadConfig } = require('./storage');
 const { runFetchCommand } = require('./commands/fetch');
 const { runNextCommand } = require('./commands/next');
+const { runServeCommand } = require('./commands/serve');
 const { runStatsCommand } = require('./commands/stats');
 const { runWeakCommand } = require('./commands/weak');
 const { printError, writeLine } = require('./terminal');
@@ -21,6 +22,9 @@ function formatHelp() {
     'next 命令选项：',
     '  --topic <tag>     手动指定推荐 topic',
     '  --review          输出需要回打的旧锚点',
+    '',
+    'serve 命令选项：',
+    '  --port <number>   指定 Dashboard 本地端口，默认 3000',
   ].join('\n');
 }
 
@@ -32,6 +36,7 @@ function runPlaceholderCommand(command, context) {
 const COMMAND_HANDLERS = {
   fetch: runFetchCommand,
   next: runNextCommand,
+  serve: runServeCommand,
   stats: runStatsCommand,
   weak: runWeakCommand,
 };
@@ -73,6 +78,8 @@ async function runCli(argv, runtime = {}) {
       paths,
       config,
       apiClient: runtime.apiClient,
+      processRef: runtime.processRef || process,
+      createDashboardServer: runtime.createDashboardServer,
     };
 
     const commandHandler = COMMAND_HANDLERS[parsed.command];

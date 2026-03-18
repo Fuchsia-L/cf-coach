@@ -24,6 +24,7 @@ node cf.js fetch --handle tourist
 - `node cf.js next --handle <handle>`：推荐下一组 anchor + prerequisites
 - `node cf.js next --handle <handle> --review`：输出需要回打的旧锚点
 - `node cf.js next --handle <handle> --topic greedy`：手动指定推荐 topic
+- `node cf.js serve --port 3000`：启动本地 Dashboard HTTP 服务
 
 完成一次 `fetch` 后，`stats`、`weak`、`next` 均可在离线环境下直接读取本地缓存运行。
 
