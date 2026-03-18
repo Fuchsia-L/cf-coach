@@ -1,6 +1,7 @@
 const { COMMANDS } = require('./constants');
 const { parseArgs } = require('./args');
 const { loadConfig } = require('./storage');
+const { runFetchCommand } = require('./commands/fetch');
 const { printError, writeLine } = require('./terminal');
 
 function formatHelp() {
@@ -21,7 +22,11 @@ function runPlaceholderCommand(command, context) {
   return 0;
 }
 
-function runCli(argv, runtime = {}) {
+const COMMAND_HANDLERS = {
+  fetch: runFetchCommand,
+};
+
+async function runCli(argv, runtime = {}) {
   const stdout = runtime.stdout || process.stdout;
   const stderr = runtime.stderr || process.stderr;
   const env = runtime.env || process.env;
@@ -40,7 +45,7 @@ function runCli(argv, runtime = {}) {
       return 1;
     }
 
-    const { config } = loadConfig(env);
+    const { config, paths } = loadConfig(env);
 
     if (parsed.showHelp) {
       writeLine(stdout, formatHelp());
@@ -49,13 +54,24 @@ function runCli(argv, runtime = {}) {
 
     const handle = parsed.options.handle || config.handle;
 
-    return runPlaceholderCommand(parsed.command, {
+    const context = {
       stdout,
       stderr,
       env,
       handle,
       args: parsed.commandArgs,
-    });
+      paths,
+      config,
+      apiClient: runtime.apiClient,
+    };
+
+    const commandHandler = COMMAND_HANDLERS[parsed.command];
+
+    if (commandHandler) {
+      return await commandHandler(context);
+    }
+
+    return runPlaceholderCommand(parsed.command, context);
   } catch (error) {
     printError(stderr, error);
     return 1;

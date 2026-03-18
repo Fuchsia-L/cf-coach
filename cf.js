@@ -2,4 +2,11 @@
 
 const { runCli } = require('./src/cli');
 
-process.exitCode = runCli(process.argv.slice(2));
+runCli(process.argv.slice(2))
+  .then((exitCode) => {
+    process.exitCode = exitCode;
+  })
+  .catch((error) => {
+    process.stderr.write(`${error.message || String(error)}\n`);
+    process.exitCode = 1;
+  });
