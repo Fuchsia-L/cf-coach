@@ -3,9 +3,9 @@
   "requirement": "# cf-coach\n\nCodeforces 训练助手 CLI。基于个人训练体系（锚点题→前置题→回打→四句总结），提供 rating 统计、弱项分析、智能推题、训练日志。\n\n## 技术栈\n\n- Node.js（纯 JS，不用 TS）\n- 命令行工具，`node cf.js <command>` 运行\n- Codeforces API（公开接口，无需 API key）\n- 本地 JSON 文件存储（`~/.cf-coach/`）\n- 零外部 npm 依赖\n\n## CF 账户\n\n- Handle: `Fuchsia_L`\n- 默认 handle 存在配置文件里，命令可用 `--handle` 覆盖\n\n## Codeforces API 端点\n\n- `user.info?handles=X` — 用户基本信息 + rating\n- `user.status?handle=X` — 所有提交记录\n- `user.rating?handle=X` — rating 变化历史\n- `problemset.problems` — 全量题库（题目 + 标签 + rating）\n\nAPI 无需认证，有频率限制（~1 req/2s），需要做请求间隔控制。\n\n## 命令\n\n### `cf fetch`\n\n拉取并缓存 CF 数据。\n\n- 调用 `user.status` 拉全量提交记录\n- 调用 `user.rating` 拉 rating 历史\n- 调用 `problemset.problems` 拉题库\n- 增量更新：对比本地缓存，只处理新数据\n- 缓存到 `~/.cf-coach/cache/` 下的 JSON 文件\n- 显示简要更新摘要（新增 X 条提交，Y 道新 AC）\n\n### `cf stats`\n\n统计面板。\n\n- 当前 rating + 最高 rating + rank\n- rating 变化趋势（近 N 场比赛，用 ASCII 简表）\n- 各 tag 的 AC 数 / 尝试数 / 通过率\n- 按题目 rating 分档（800/900/1000/.../1600+）的 AC 分布\n- 总 AC 数、总提交数、总尝试题数\n\n### `cf weak`\n\n弱项分析。\n\n- 找出：tag 尝试 ≥3 但 AC 率 < 50% 的\n- 找出：某 rating 区间尝试多次但 AC 率低的\n- 找出：在 map.md 训练路线图中，当前阶段应掌握但 AC 数不足的 tag\n- 输出优先建议训练的 tag + rating 区间\n\n### `cf next [--topic <tag>] [--review]`\n\n推题引擎。\n\n训练体系（来自 guide.md）：\n1. 选一个**锚点题**：当前专题，rating 1500-1600（如果用户当前水平较低，整体下调：锚点 = 用户 rating + 400~500）\n2. 选三道**前置题**：同专题，rating 分别为 锚点-300 / 锚点-200 / 锚点-100\n3. 前置题优先选结构类似的（同 tag 组合），而非只看单个 tag\n4. 过滤掉已 AC 的题目\n\n当前专题判断逻辑：\n- 读取 map.md 的 20 个专题阶段\n- 根据用户已 AC 题目的 tag 分布 + rating 分布，判断当前应该在哪个阶段\n- 每个专题需要 8-10 题 AC（≥6 题独立 AC）才算完成\n\n`--topic <tag>`：手动指定专题，跳过自动判断\n`--review`：推荐需要回打的旧锚点题（之前做过前置题但没回打的）\n\n输出格式：\n```\n当前专题：并查集（第 7 / 20 阶段）\n进度：5/8 题 AC\n\n推荐锚点题：\n  CF 1735C Nikita",
   "workdir": "D:\\_PROJECTS\\cf-coach",
   "createdAt": "2026-03-18T01:58:01.135Z",
-  "updatedAt": "2026-03-18T02:10:04.926Z",
+  "updatedAt": "2026-03-18T02:16:27.372Z",
   "status": "in-progress",
-  "currentPhase": 3,
+  "currentPhase": 4,
   "plan": {
     "projectName": "cf-coach",
     "summary": "A zero-dependency Node.js CLI for Codeforces training workflow that fetches and caches user/problem data, computes progress and weakness analytics, maps a user onto a staged training roadmap, and recommends next problems using the anchor-prerequisite-review method. The delivery should prioritize a stable local data layer, deterministic analytics, clear terminal output, and modular command logic so each command can be developed and validated incrementally.",
@@ -196,6 +196,13 @@
       "testFixCycles": 1,
       "startedAt": "2026-03-18T02:03:03.441Z",
       "completedAt": "2026-03-18T02:10:04.925Z"
+    },
+    "3": {
+      "status": "completed",
+      "reviewCycles": 1,
+      "testFixCycles": 1,
+      "startedAt": "2026-03-18T02:10:04.927Z",
+      "completedAt": "2026-03-18T02:16:27.370Z"
     }
   },
   "finalReview": null,
@@ -233,6 +240,18 @@
     {
       "timestamp": "2026-03-18T02:10:04.707Z",
       "step": "phase-2-review",
+      "message": "Claude review cycle 1",
+      "ok": true
+    },
+    {
+      "timestamp": "2026-03-18T02:15:29.583Z",
+      "step": "phase-3-implement",
+      "message": "Codex implementation",
+      "ok": true
+    },
+    {
+      "timestamp": "2026-03-18T02:16:27.158Z",
+      "step": "phase-3-review",
       "message": "Claude review cycle 1",
       "ok": true
     }
