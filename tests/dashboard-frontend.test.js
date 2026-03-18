@@ -2,18 +2,110 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  COLLAPSIBLE_PANEL_NAMES,
   buildRatingTrendGeometry,
+  buildSubmissionTimelineGeometry,
+  createDashboardController,
+  createDashboardUiState,
   formatRatingDelta,
   getBucketLabel,
   getCodeforcesRatingColor,
   getRatingBucketColor,
+  getSubmissionVerdictColor,
+  isPanelExpanded,
+  renderDashboard,
+  renderNextProblemPanel,
   renderProfileBar,
   renderRatingBucketPanel,
   renderRatingTrendPanel,
   renderRoadmapPanel,
+  renderSubmissionTimelinePanel,
   renderTagAbilityPanel,
+  renderWeakAnalysisPanel,
   sortTagStats,
+  togglePanelExpanded,
 } = require('../src/dashboard/dashboard');
+
+function createDashboardFixture() {
+  return {
+    profile: {
+      state: 'ready',
+      payload: {
+        handle: 'demo',
+        rank: 'pupil',
+        rating: 1337,
+        totalAcceptedCount: 12,
+        totalSubmissionsCount: 45,
+        totalAttemptedProblems: 17,
+      },
+    },
+    ratingHistory: {
+      state: 'ready',
+      payload: {
+        items: [
+          { contestName: 'Round 1', timestamp: 100, oldRating: 900, newRating: 950, delta: 50 },
+        ],
+      },
+    },
+    roadmap: {
+      state: 'ready',
+      payload: {
+        items: [
+          { stageId: 1, stageName: 'Sorting', tag: 'sortings', acceptedProgress: 1, target: 4, isCurrentStage: true },
+        ],
+      },
+    },
+    tagStats: {
+      state: 'ready',
+      payload: {
+        items: [
+          { tag: 'greedy', acceptedCount: 3, attemptedCount: 5, acceptanceRate: 0.6 },
+        ],
+      },
+    },
+    ratingBuckets: {
+      state: 'ready',
+      payload: {
+        items: [
+          { bucket: '1200', acceptedCount: 2 },
+        ],
+      },
+    },
+    weak: {
+      state: 'ready',
+      payload: {
+        currentStage: { id: 1, name: 'Sorting' },
+        tagGaps: [{ tag: 'binary search', acceptedCount: 1, attemptedCount: 4, acceptanceRate: 0.25 }],
+        ratingWeakZones: [],
+        roadmapGaps: [],
+      },
+    },
+    next: {
+      state: 'ready',
+      payload: {
+        currentTopic: 'greedy',
+        stage: { id: 1, name: 'Sorting' },
+        stageProgress: { accepted: 1, target: 4 },
+        anchor: {
+          problemId: '401B',
+          title: 'Greedy Combo Anchor',
+          rating: 1440,
+          tags: ['greedy', 'sortings'],
+          link: 'https://codeforces.com/problemset/problem/401/B',
+        },
+        prerequisites: [],
+      },
+    },
+    submissions: {
+      state: 'ready',
+      payload: {
+        items: [
+          { timestamp: 1000, rating: 800, verdict: 'WRONG_ANSWER', problemId: '100A', title: 'Sort Warmup', tags: ['sortings'] },
+        ],
+      },
+    },
+  };
+}
 
 test('dashboard helper functions format deltas, colors, buckets, and tag ordering', () => {
   assert.equal(formatRatingDelta({ oldRating: 1200, newRating: 1260 }), '+60');
@@ -25,6 +117,10 @@ test('dashboard helper functions format deltas, colors, buckets, and tag orderin
   assert.equal(getBucketLabel('1600+'), '1600+');
   assert.equal(getRatingBucketColor('1200'), '#0f9d58');
   assert.equal(getRatingBucketColor('1600+'), '#3f51b5');
+  assert.equal(getSubmissionVerdictColor('OK'), '#56d364');
+  assert.equal(getSubmissionVerdictColor('WRONG_ANSWER'), '#ff7b72');
+  assert.equal(getSubmissionVerdictColor('TIME_LIMIT_EXCEEDED'), '#ff8f00');
+  assert.equal(getSubmissionVerdictColor('RUNTIME_ERROR'), '#93a1c6');
 
   const ordered = sortTagStats([
     { tag: 'dp', acceptedCount: 2, attemptedCount: 5 },
@@ -33,6 +129,20 @@ test('dashboard helper functions format deltas, colors, buckets, and tag orderin
   ]);
 
   assert.deepEqual(ordered.map((item) => item.tag), ['greedy', 'binary search', 'dp']);
+});
+
+test('dashboard ui state helpers support panel expansion defaults and local toggles', () => {
+  const uiState = createDashboardUiState();
+
+  assert.ok(COLLAPSIBLE_PANEL_NAMES.includes('roadmap'));
+  assert.equal(isPanelExpanded(uiState, 'roadmap'), true);
+  assert.equal(isPanelExpanded(uiState, 'profile'), true);
+
+  const collapsedState = togglePanelExpanded(uiState, 'roadmap');
+  assert.equal(isPanelExpanded(collapsedState, 'roadmap'), false);
+
+  const restoredState = togglePanelExpanded(collapsedState, 'roadmap');
+  assert.equal(isPanelExpanded(restoredState, 'roadmap'), true);
 });
 
 test('rating trend geometry uses non-uniform x spacing based on timestamps', () => {
@@ -48,6 +158,20 @@ test('rating trend geometry uses non-uniform x spacing based on timestamps', () 
   assert.equal(geometry.points.length, 3);
   assert.notEqual(geometry.points[1].x - geometry.points[0].x, geometry.points[2].x - geometry.points[1].x);
   assert.match(geometry.polyline, /,/);
+});
+
+test('submission timeline geometry uses timestamps for x-axis and rating for y-axis placement', () => {
+  const geometry = buildSubmissionTimelineGeometry([
+    { timestamp: 1000, rating: 800, verdict: 'WRONG_ANSWER', problemId: '100A', title: 'Sort Warmup' },
+    { timestamp: 1030, rating: 950, verdict: 'OK', problemId: '102B', title: 'Greedy Basics' },
+    { timestamp: 1200, rating: 1290, verdict: 'TIME_LIMIT_EXCEEDED', problemId: '204A', title: 'Binary Four' },
+  ]);
+
+  assert.equal(geometry.points.length, 3);
+  assert.ok(geometry.points[0].x < geometry.points[1].x);
+  assert.ok(geometry.points[1].x < geometry.points[2].x);
+  assert.ok(geometry.points[0].y > geometry.points[1].y);
+  assert.ok(geometry.points[1].y > geometry.points[2].y);
 });
 
 test('renderProfileBar includes handle, rank, rating, accepted, submissions, and attempted counts', () => {
@@ -139,4 +263,177 @@ test('renderRatingBucketPanel shows fixed bucket labels and Codeforces-colored b
   assert.match(html, /data-panel="rating-buckets"/);
   assert.match(html, /data-bucket-label="1600\+"/);
   assert.match(html, /background:#3f51b5/);
+});
+
+test('renderWeakAnalysisPanel shows weak tags, weak ratings, and roadmap gaps', () => {
+  const html = renderWeakAnalysisPanel({
+    currentStage: { id: 1, name: '排序 + 贪心' },
+    tagGaps: [
+      { tag: 'binary search', acceptedCount: 0, attemptedCount: 4, acceptanceRate: 0 },
+    ],
+    ratingWeakZones: [
+      { bucket: '1200', label: '1200-1299', acceptedCount: 0, problemCount: 4, acceptanceRate: 0 },
+    ],
+    roadmapGaps: [
+      { stageId: 1, tag: 'greedy', acceptedProgress: 1, target: 4, missingCount: 3 },
+    ],
+  });
+
+  assert.match(html, /data-panel="weak-analysis"/);
+  assert.match(html, /Current roadmap focus/);
+  assert.match(html, /binary search/);
+  assert.match(html, /1200-1299/);
+  assert.match(html, /greedy/);
+});
+
+test('renderNextProblemPanel shows anchor and prerequisite cards with external links', () => {
+  const html = renderNextProblemPanel({
+    currentTopic: 'greedy',
+    stage: { id: 1, name: '排序 + 贪心' },
+    stageProgress: { accepted: 1, target: 4 },
+    anchor: {
+      problemId: '401B',
+      title: 'Greedy Combo Anchor',
+      rating: 1440,
+      tags: ['greedy', 'sortings'],
+      link: 'https://codeforces.com/problemset/problem/401/B',
+    },
+    prerequisites: [
+      {
+        problemId: '300B',
+        title: 'Greedy Combo 1',
+        rating: 1190,
+        tags: ['greedy', 'sortings'],
+        link: 'https://codeforces.com/problemset/problem/300/B',
+      },
+      {
+        problemId: '310B',
+        title: 'Greedy Combo 2',
+        rating: 1290,
+        tags: ['greedy', 'sortings'],
+        link: 'https://codeforces.com/problemset/problem/310/B',
+      },
+      {
+        problemId: '320B',
+        title: 'Greedy Combo 3',
+        rating: 1390,
+        tags: ['greedy', 'sortings'],
+        link: 'https://codeforces.com/problemset/problem/320/B',
+      },
+    ],
+  });
+
+  assert.match(html, /data-panel="next-problem"/);
+  assert.match(html, /Current topic: <strong>greedy<\/strong>/);
+  assert.match(html, /Greedy Combo Anchor/);
+  assert.match(html, /target="_blank"/);
+  assert.match(html, /rel="noopener noreferrer"/);
+  assert.match(html, /problemset\/problem\/401\/B/);
+});
+
+test('renderSubmissionTimelinePanel colors points by verdict and includes tooltip details', () => {
+  const html = renderSubmissionTimelinePanel({
+    items: [
+      { timestamp: 1000, rating: 800, verdict: 'WRONG_ANSWER', problemId: '100A', title: 'Sort Warmup', tags: ['sortings'] },
+      { timestamp: 1010, rating: 800, verdict: 'OK', problemId: '100A', title: 'Sort Warmup', tags: ['sortings'] },
+      { timestamp: 1070, rating: 1290, verdict: 'TIME_LIMIT_EXCEEDED', problemId: '204A', title: 'Binary Four', tags: ['binary search'] },
+      { timestamp: 1080, rating: 1300, verdict: 'RUNTIME_ERROR', problemId: '205A', title: 'Binary Five', tags: ['binary search'] },
+    ],
+  });
+
+  assert.match(html, /data-panel="submission-timeline"/);
+  assert.match(html, /fill="#ff7b72"/);
+  assert.match(html, /fill="#56d364"/);
+  assert.match(html, /fill="#ff8f00"/);
+  assert.match(html, /fill="#93a1c6"/);
+  assert.match(html, /<title>Sort Warmup · WA · 1970-01-01 00:16:40 UTC<\/title>/);
+  assert.match(html, /<title>Binary Four · TLE · 1970-01-01 00:17:50 UTC<\/title>/);
+});
+
+test('bottom panels render clear empty and error states', () => {
+  const emptyWeak = renderWeakAnalysisPanel({ tagGaps: [], ratingWeakZones: [], roadmapGaps: [] });
+  const emptyNext = renderNextProblemPanel({ anchor: null, prerequisites: [] });
+  const emptyTimeline = renderSubmissionTimelinePanel({ items: [] });
+
+  assert.match(emptyWeak, /No weak areas detected/);
+  assert.match(emptyNext, /No recommendation is available/);
+  assert.match(emptyTimeline, /No rated submissions are available/);
+
+  const html = renderDashboard({
+    profile: { state: 'ready', payload: { handle: 'demo', rank: 'pupil', rating: 1337, totalAcceptedCount: 1, totalSubmissionsCount: 2, totalAttemptedProblems: 1 } },
+    ratingHistory: { state: 'ready', payload: { items: [] } },
+    roadmap: { state: 'ready', payload: { items: [] } },
+    tagStats: { state: 'ready', payload: { items: [] } },
+    ratingBuckets: { state: 'ready', payload: { items: [] } },
+    weak: { state: 'error', error: new Error('Weak API unavailable') },
+    next: { state: 'error', error: new Error('Next API unavailable') },
+    submissions: { state: 'error', error: new Error('Submissions API unavailable') },
+  });
+
+  assert.match(html, /Weak API unavailable/);
+  assert.match(html, /Next API unavailable/);
+  assert.match(html, /Submissions API unavailable/);
+});
+
+test('renderDashboard includes sticky profile, collapsible panel hooks, and tooltip markers', () => {
+  const html = renderDashboard(
+    createDashboardFixture(),
+    createDashboardUiState({
+      expandedPanels: {
+        roadmap: false,
+      },
+      profilePinned: true,
+      tooltip: {
+        visible: true,
+        panelName: 'submission-timeline',
+        key: 'submission-timeline-0',
+        content: 'Sort Warmup · WA · 1970-01-01 00:16:40 UTC',
+      },
+    })
+  );
+
+  assert.match(html, /data-dashboard-profile-pinned="true"/);
+  assert.match(html, /data-dashboard-sticky="profile"/);
+  assert.match(html, /data-panel="roadmap"[^>]*data-panel-collapsible="true"[^>]*data-panel-expanded="false"/);
+  assert.match(html, /data-dashboard-toggle="roadmap"/);
+  assert.match(html, /data-panel-body="roadmap" hidden/);
+  assert.match(html, /data-dashboard-tooltip-layer/);
+  assert.match(html, /Sort Warmup · WA · 1970-01-01 00:16:40 UTC/);
+  assert.match(html, /data-tooltip-panel="rating-trend"/);
+  assert.match(html, /data-tooltip-content="Round 1 · \+50 · 950"/);
+  assert.match(html, /data-tooltip-panel="submission-timeline"/);
+});
+
+test('dashboard controller updates panel and tooltip state without reloading data', () => {
+  const root = {
+    attributes: {},
+    innerHTML: '',
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return this.attributes[name] || null;
+    },
+  };
+
+  const controller = createDashboardController({}, root, {
+    data: createDashboardFixture(),
+  });
+
+  controller.render();
+  assert.match(root.innerHTML, /data-panel="roadmap"[^>]*data-panel-expanded="true"/);
+
+  controller.togglePanel('roadmap');
+  assert.match(root.innerHTML, /data-panel="roadmap"[^>]*data-panel-expanded="false"/);
+
+  controller.showTooltip({
+    panelName: 'rating-trend',
+    key: 'rating-trend-0',
+    content: 'Round 1 · +50 · 950',
+  });
+  assert.equal(root.getAttribute('data-dashboard-tooltip-visible'), 'true');
+  assert.equal(controller.getState().tooltip.content, 'Round 1 · +50 · 950');
+
+  controller.setProfilePinned(true);
+  assert.equal(root.getAttribute('data-dashboard-profile-pinned'), 'true');
 });

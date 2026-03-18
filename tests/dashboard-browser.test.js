@@ -101,6 +101,44 @@ function createSmokeDataLayer() {
         },
       };
     },
+    getWeak() {
+      return {
+        statusCode: 200,
+        payload: {
+          currentStage: { id: 2, name: 'Greedy' },
+          tagGaps: [{ tag: 'binary search', acceptedCount: 1, attemptedCount: 4, acceptanceRate: 0.25 }],
+          ratingWeakZones: [{ bucket: '1200', label: '1200-1299', acceptedCount: 1, problemCount: 5, acceptanceRate: 0.2 }],
+          roadmapGaps: [{ stageId: 2, tag: 'greedy', acceptedProgress: 2, target: 4, missingCount: 2 }],
+        },
+      };
+    },
+    getNext() {
+      return {
+        statusCode: 200,
+        payload: {
+          currentTopic: 'greedy',
+          stage: { id: 2, name: 'Greedy' },
+          stageProgress: { accepted: 2, target: 4 },
+          anchor: { problemId: '401B', title: 'Greedy Anchor', rating: 1400, tags: ['greedy'], link: 'https://codeforces.com/problemset/problem/401/B' },
+          prerequisites: [
+            { problemId: '300B', title: 'Pre 1', rating: 1200, tags: ['greedy'], link: 'https://codeforces.com/problemset/problem/300/B' },
+            { problemId: '310B', title: 'Pre 2', rating: 1250, tags: ['greedy'], link: 'https://codeforces.com/problemset/problem/310/B' },
+            { problemId: '320B', title: 'Pre 3', rating: 1300, tags: ['greedy'], link: 'https://codeforces.com/problemset/problem/320/B' },
+          ],
+        },
+      };
+    },
+    getSubmissions() {
+      return {
+        statusCode: 200,
+        payload: {
+          items: [
+            { timestamp: 1000, rating: 800, verdict: 'OK', problemId: '100A', title: 'Sort Warmup', tags: ['sortings'] },
+            { timestamp: 1050, rating: 1200, verdict: 'WRONG_ANSWER', problemId: '200A', title: 'Greedy One', tags: ['greedy'] },
+          ],
+        },
+      };
+    },
   };
 }
 
@@ -156,6 +194,9 @@ test('dashboard browser smoke test loads the page and renders all core panels fr
     assert.match(root.innerHTML, /data-panel="roadmap"/);
     assert.match(root.innerHTML, /data-panel="tag-ability"/);
     assert.match(root.innerHTML, /data-panel="rating-buckets"/);
+    assert.match(root.innerHTML, /data-panel="weak-analysis"/);
+    assert.match(root.innerHTML, /data-panel="next-problem"/);
+    assert.match(root.innerHTML, /data-panel="submission-timeline"/);
     assert.match(root.innerHTML, /Round 1/);
     assert.match(root.innerHTML, /Stage 20/);
   } finally {
