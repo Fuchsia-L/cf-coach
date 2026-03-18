@@ -218,7 +218,10 @@ test('dashboard browser smoke test loads the page and renders all core panels fr
     assert.match(root.innerHTML, /panel-kicker-readable/);
     assert.match(root.innerHTML, /chart-axis-label/);
     assert.match(root.innerHTML, /Round 1/);
-    assert.match(root.innerHTML, /Stage 20/);
+    assert.match(root.innerHTML, /Show all 20 stages/);
+    assert.match(root.innerHTML, /Stage 1/);
+    assert.match(root.innerHTML, /Stage 5/);
+    assert.doesNotMatch(root.innerHTML, /Stage 20/);
   } finally {
     await serverRef.close();
   }

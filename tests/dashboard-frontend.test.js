@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   COLLAPSIBLE_PANEL_NAMES,
+  ROADMAP_VISIBLE_STAGE_COUNT,
   TAG_ABILITY_VISIBLE_COUNT,
   buildRatingTrendGeometry,
   buildSubmissionTimelineGeometry,
@@ -12,8 +13,10 @@ const {
   getBucketLabel,
   getCodeforcesRatingColor,
   getRatingBucketColor,
+  getRoadmapVisibleStages,
   getSubmissionVerdictColor,
   isPanelExpanded,
+  isRoadmapExpanded,
   isTagAbilityExpanded,
   renderDashboard,
   renderNextProblemPanel,
@@ -25,12 +28,25 @@ const {
   renderTagAbilityPanel,
   renderWeakAnalysisPanel,
   sortTagStats,
+  toggleRoadmapExpanded,
   toggleTagAbilityExpanded,
   togglePanelExpanded,
 } = require('../src/dashboard/dashboard');
 
 function countMatches(text, pattern) {
   return (text.match(pattern) || []).length;
+}
+
+function createRoadmapItems(totalCount, currentStageId, overrides = {}) {
+  return Array.from({ length: totalCount }, (_, index) => ({
+    stageId: index + 1,
+    stageName: `Stage ${index + 1}`,
+    tag: index % 2 === 0 ? 'greedy' : 'dp',
+    acceptedProgress: index + 1 < currentStageId ? 4 : index + 1 === currentStageId ? 2 : 0,
+    target: 4,
+    isCurrentStage: index + 1 === currentStageId,
+    ...(overrides[index + 1] || {}),
+  }));
 }
 
 function createDashboardFixture() {
@@ -143,6 +159,7 @@ test('dashboard ui state helpers support panel expansion defaults and local togg
 
   assert.ok(COLLAPSIBLE_PANEL_NAMES.includes('roadmap'));
   assert.equal(isPanelExpanded(uiState, 'roadmap'), true);
+  assert.equal(isRoadmapExpanded(uiState), false);
   assert.equal(isPanelExpanded(uiState, 'profile'), true);
   assert.equal(isTagAbilityExpanded(uiState), false);
 
@@ -152,7 +169,13 @@ test('dashboard ui state helpers support panel expansion defaults and local togg
   const restoredState = togglePanelExpanded(collapsedState, 'roadmap');
   assert.equal(isPanelExpanded(restoredState, 'roadmap'), true);
 
-  const expandedTagAbilityState = toggleTagAbilityExpanded(restoredState);
+  const expandedRoadmapState = toggleRoadmapExpanded(restoredState);
+  assert.equal(isRoadmapExpanded(expandedRoadmapState), true);
+
+  const restoredRoadmapState = toggleRoadmapExpanded(expandedRoadmapState);
+  assert.equal(isRoadmapExpanded(restoredRoadmapState), false);
+
+  const expandedTagAbilityState = toggleTagAbilityExpanded(restoredRoadmapState);
   assert.equal(isTagAbilityExpanded(expandedTagAbilityState), true);
 
   const restoredTagAbilityState = toggleTagAbilityExpanded(expandedTagAbilityState);
@@ -222,20 +245,70 @@ test('renderRatingTrendPanel outputs svg line chart with contest tooltip titles'
   assert.match(html, /<title>Round 2 · \+50<\/title>/);
 });
 
-test('renderRoadmapPanel applies current, completed, and not-started state classes', () => {
+test('renderRoadmapPanel defaults to a five-stage window around the current stage', () => {
   const html = renderRoadmapPanel({
-    items: [
-      { stageId: 1, stageName: 'Sorting', tag: 'sortings', acceptedProgress: 4, target: 4, isCurrentStage: false },
-      { stageId: 2, stageName: 'Greedy', tag: 'greedy', acceptedProgress: 2, target: 4, isCurrentStage: true },
-      { stageId: 3, stageName: 'Binary Search', tag: 'binary search', acceptedProgress: 0, target: 4, isCurrentStage: false },
-    ],
+    items: createRoadmapItems(8, 4),
   });
 
-  assert.match(html, /roadmap-stage is-complete/);
-  assert.match(html, /roadmap-stage is-current/);
-  assert.match(html, /roadmap-stage is-not-started/);
-  assert.match(html, /Sorting/);
-  assert.match(html, /Binary Search/);
+  assert.equal(countMatches(html, /class="roadmap-stage(?:\s|\")/g), ROADMAP_VISIBLE_STAGE_COUNT);
+  assert.match(html, /data-roadmap-state="collapsed"/);
+  assert.match(html, /Show all 8 stages/);
+  assert.match(html, /Stage 2/);
+  assert.match(html, /Stage 3/);
+  assert.match(html, /Stage 4/);
+  assert.match(html, /Stage 5/);
+  assert.match(html, /Stage 6/);
+  assert.doesNotMatch(html, /Stage 1/);
+  assert.doesNotMatch(html, /Stage 7/);
+  assert.doesNotMatch(html, /Stage 8/);
+});
+
+test('renderRoadmapPanel keeps the current stage visible near roadmap edges', () => {
+  const leadingStages = createRoadmapItems(7, 1);
+  const trailingStages = createRoadmapItems(7, 7);
+  const leadingHtml = renderRoadmapPanel({ items: leadingStages });
+  const trailingHtml = renderRoadmapPanel({ items: trailingStages });
+
+  assert.deepEqual(
+    getRoadmapVisibleStages(leadingStages).map((stage) => stage.stageId),
+    [1, 2, 3, 4, 5]
+  );
+  assert.deepEqual(
+    getRoadmapVisibleStages(trailingStages).map((stage) => stage.stageId),
+    [3, 4, 5, 6, 7]
+  );
+  assert.match(leadingHtml, /Stage 1/);
+  assert.match(leadingHtml, /Stage 5/);
+  assert.doesNotMatch(leadingHtml, /Stage 6/);
+  assert.match(trailingHtml, /Stage 3/);
+  assert.match(trailingHtml, /Stage 7/);
+  assert.doesNotMatch(trailingHtml, /Stage 2/);
+});
+
+test('renderRoadmapPanel preserves current, completed, and not-started state classes in collapsed and expanded views', () => {
+  const items = createRoadmapItems(6, 3, {
+    1: { stageName: 'Sorting', tag: 'sortings', acceptedProgress: 4 },
+    3: { stageName: 'Greedy', tag: 'greedy', acceptedProgress: 2 },
+    5: { stageName: 'Binary Search', tag: 'binary search', acceptedProgress: 0 },
+    6: { stageName: 'Graphs', tag: 'graphs', acceptedProgress: 0 },
+  });
+  const collapsedHtml = renderRoadmapPanel({ items });
+  const expandedHtml = renderRoadmapPanel({ items }, { expandedRoadmap: true });
+
+  assert.match(collapsedHtml, /roadmap-stage is-complete/);
+  assert.match(collapsedHtml, /roadmap-stage is-current/);
+  assert.match(collapsedHtml, /roadmap-stage is-not-started/);
+  assert.match(collapsedHtml, /Binary Search/);
+  assert.doesNotMatch(collapsedHtml, /Graphs/);
+  assert.match(collapsedHtml, /aria-expanded="false"/);
+
+  assert.match(expandedHtml, /data-roadmap-state="expanded"/);
+  assert.match(expandedHtml, /roadmap-stage is-complete/);
+  assert.match(expandedHtml, /roadmap-stage is-current/);
+  assert.match(expandedHtml, /roadmap-stage is-not-started/);
+  assert.match(expandedHtml, /Graphs/);
+  assert.match(expandedHtml, /Show focused 5-stage view/);
+  assert.match(expandedHtml, /aria-expanded="true"/);
 });
 
 test('renderTagAbilityPanel sorts tags by accepted count and shows attempted, accepted, and rate labels', () => {
@@ -487,7 +560,7 @@ test('renderDashboard includes masonry layout, readable typography hooks, sticky
   assert.match(html, /data-tooltip-panel="submission-timeline"/);
 });
 
-test('dashboard controller updates panel and tooltip state without reloading data', () => {
+test('dashboard controller updates panel, roadmap disclosure, and tooltip state without reloading data', () => {
   const root = {
     attributes: {},
     innerHTML: '',
@@ -500,12 +573,29 @@ test('dashboard controller updates panel and tooltip state without reloading dat
   };
 
   const controller = createDashboardController({}, root, {
-    data: createDashboardFixture(),
+    data: {
+      ...createDashboardFixture(),
+      roadmap: {
+        state: 'ready',
+        payload: {
+          items: createRoadmapItems(7, 4),
+        },
+      },
+    },
   });
 
   controller.render();
   assert.match(root.innerHTML, /data-panel="roadmap"[^>]*data-panel-expanded="true"/);
+  assert.equal(countMatches(root.innerHTML, /class="roadmap-stage(?:\s|\")/g), ROADMAP_VISIBLE_STAGE_COUNT);
   assert.equal(countMatches(root.innerHTML, /class="tag-row"/g), 1);
+
+  controller.toggleRoadmapDisclosure();
+  assert.equal(countMatches(root.innerHTML, /class="roadmap-stage(?:\s|\")/g), 7);
+  assert.match(root.innerHTML, /data-roadmap-state="expanded"/);
+
+  controller.toggleRoadmapDisclosure();
+  assert.equal(countMatches(root.innerHTML, /class="roadmap-stage(?:\s|\")/g), ROADMAP_VISIBLE_STAGE_COUNT);
+  assert.match(root.innerHTML, /data-roadmap-state="collapsed"/);
 
   controller.togglePanel('roadmap');
   assert.match(root.innerHTML, /data-panel="roadmap"[^>]*data-panel-expanded="false"/);

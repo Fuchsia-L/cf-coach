@@ -40,6 +40,7 @@
     'submission-timeline': true,
   };
 
+  const ROADMAP_VISIBLE_STAGE_COUNT = 5;
   const TAG_ABILITY_VISIBLE_COUNT = 10;
 
   const numberFormatter = new Intl.NumberFormat('en-US');
@@ -50,6 +51,7 @@
         ...DEFAULT_EXPANDED_PANELS,
         ...(initialState.expandedPanels || {}),
       },
+      expandedRoadmap: initialState.expandedRoadmap === true,
       expandedTagAbility: initialState.expandedTagAbility === true,
       tooltip: {
         visible: initialState.tooltip?.visible === true,
@@ -86,6 +88,19 @@
         ...currentState.expandedPanels,
         [panelName]: !isPanelExpanded(currentState, panelName),
       },
+    };
+  }
+
+  function isRoadmapExpanded(uiState) {
+    return createDashboardUiState(uiState).expandedRoadmap === true;
+  }
+
+  function toggleRoadmapExpanded(uiState) {
+    const currentState = createDashboardUiState(uiState);
+
+    return {
+      ...currentState,
+      expandedRoadmap: !currentState.expandedRoadmap,
     };
   }
 
@@ -607,18 +622,57 @@
     return classNames.join(' ');
   }
 
+  function getRoadmapVisibleStages(stages, uiState) {
+    const roadmapStages = Array.isArray(stages) ? stages : [];
+
+    if (roadmapStages.length <= ROADMAP_VISIBLE_STAGE_COUNT || isRoadmapExpanded(uiState)) {
+      return roadmapStages;
+    }
+
+    const currentStageIndex = roadmapStages.findIndex((stage) => stage?.isCurrentStage);
+
+    if (currentStageIndex === -1) {
+      return roadmapStages.slice(0, ROADMAP_VISIBLE_STAGE_COUNT);
+    }
+
+    let startIndex = Math.max(currentStageIndex - Math.floor(ROADMAP_VISIBLE_STAGE_COUNT / 2), 0);
+    let endIndex = startIndex + ROADMAP_VISIBLE_STAGE_COUNT;
+
+    if (endIndex > roadmapStages.length) {
+      endIndex = roadmapStages.length;
+      startIndex = Math.max(endIndex - ROADMAP_VISIBLE_STAGE_COUNT, 0);
+    }
+
+    return roadmapStages.slice(startIndex, endIndex);
+  }
+
   function renderRoadmapPanel(roadmap, uiState) {
     const stages = Array.isArray(roadmap?.items) ? roadmap.items : [];
+    const visibleStages = getRoadmapVisibleStages(stages, uiState);
+    const roadmapExpanded = isRoadmapExpanded(uiState);
+    const canToggleRoadmapWindow = stages.length > ROADMAP_VISIBLE_STAGE_COUNT;
     const body = stages.length === 0
       ? renderPanelStatus('empty', 'Roadmap data is not available.')
-      : `<div class="roadmap-grid">${stages.map((stage) => [
-          `<article class="${getRoadmapStageClasses(stage)}" data-stage-id="${escapeHtml(stage.stageId)}">`,
-          `  <p class="roadmap-stage-index">Stage ${escapeHtml(stage.stageId)}</p>`,
-          `  <h3 class="roadmap-stage-name">${escapeHtml(stage.stageName)}</h3>`,
-          `  <p class="roadmap-stage-tag">${escapeHtml(stage.tag || 'n/a')}</p>`,
-          `  <p class="roadmap-stage-progress">${escapeHtml(formatNumber(stage.acceptedProgress))} / ${escapeHtml(formatNumber(stage.target))}</p>`,
-          '</article>',
-        ].join('')).join('')}</div>`;
+      : [
+          `<div class="roadmap-panel-stack" data-roadmap-state="${roadmapExpanded ? 'expanded' : 'collapsed'}">`,
+          `  <div class="roadmap-grid">${visibleStages.map((stage) => [
+              `<article class="${getRoadmapStageClasses(stage)}" data-stage-id="${escapeHtml(stage.stageId)}">`,
+              `  <p class="roadmap-stage-index">Stage ${escapeHtml(stage.stageId)}</p>`,
+              `  <h3 class="roadmap-stage-name">${escapeHtml(stage.stageName)}</h3>`,
+              `  <p class="roadmap-stage-tag">${escapeHtml(stage.tag || 'n/a')}</p>`,
+              `  <p class="roadmap-stage-progress">${escapeHtml(formatNumber(stage.acceptedProgress))} / ${escapeHtml(formatNumber(stage.target))}</p>`,
+              '</article>',
+            ].join('')).join('')}</div>`,
+          canToggleRoadmapWindow
+            ? [
+                '  <div class="roadmap-disclosure">',
+                `    <p class="roadmap-context">${roadmapExpanded ? `Showing all ${escapeHtml(formatNumber(stages.length))} stages.` : `Showing ${ROADMAP_VISIBLE_STAGE_COUNT} stages around the current focus.`}</p>`,
+                `    <button class="panel-toggle roadmap-toggle" type="button" data-dashboard-roadmap-toggle="true" aria-expanded="${roadmapExpanded ? 'true' : 'false'}">${roadmapExpanded ? `Show focused ${ROADMAP_VISIBLE_STAGE_COUNT}-stage view` : `Show all ${escapeHtml(formatNumber(stages.length))} stages`}</button>`,
+                '  </div>',
+              ].join('')
+            : '',
+          '</div>',
+        ].join('');
 
     return renderPanelFrame('roadmap', 'Roadmap', '20 stages', body, 'panel-roadmap', {
       collapsible: true,
@@ -1122,6 +1176,11 @@
       return render();
     }
 
+    function toggleRoadmapDisclosure() {
+      controllerState.uiState = toggleRoadmapExpanded(controllerState.uiState);
+      return render();
+    }
+
     function showTooltip(tooltip) {
       controllerState.uiState = setTooltipState(controllerState.uiState, {
         visible: true,
@@ -1155,6 +1214,13 @@
       }
 
       const handleClick = (event) => {
+        const roadmapToggleButton = findClosestAttributeTarget(event.target, 'data-dashboard-roadmap-toggle');
+
+        if (roadmapToggleButton) {
+          toggleRoadmapDisclosure();
+          return;
+        }
+
         const tagAbilityToggleButton = findClosestAttributeTarget(event.target, 'data-dashboard-tag-ability-toggle');
 
         if (tagAbilityToggleButton) {
@@ -1239,6 +1305,7 @@
       setData,
       setProfilePinned,
       showTooltip,
+      toggleRoadmapDisclosure,
       toggleTagAbilityDisclosure,
       togglePanel,
     };
@@ -1355,13 +1422,16 @@
     getBucketLabel,
     getCodeforcesRatingColor,
     getRatingBucketColor,
+    getRoadmapVisibleStages,
     getRoadmapStageClasses,
     getSubmissionVerdictColor,
     getSubmissionVerdictLabel,
     isPanelCollapsible,
     isPanelExpanded,
+    isRoadmapExpanded,
     isTagAbilityExpanded,
     loadDashboardData,
+    ROADMAP_VISIBLE_STAGE_COUNT,
     renderDashboard,
     renderErrorState,
     renderLoadingState,
@@ -1379,6 +1449,7 @@
     setTooltipState,
     sortTagStats,
     TAG_ABILITY_VISIBLE_COUNT,
+    toggleRoadmapExpanded,
     toggleTagAbilityExpanded,
     togglePanelExpanded,
   };
