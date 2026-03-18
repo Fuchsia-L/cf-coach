@@ -253,6 +253,10 @@ h1,
   stroke-linejoin: round;
 }
 
+.trend-area {
+  fill: url(#rating-trend-fill);
+}
+
 .trend-point {
   fill: #ffffff;
   stroke: var(--accent);
@@ -387,6 +391,10 @@ h1,
   stroke-width: 2.5;
 }
 
+.timeline-point-group:hover .timeline-point {
+  r: 9;
+}
+
 .problem-card.is-anchor {
   border-color: rgba(138, 125, 179, 0.42);
   background: rgba(34, 28, 52, 0.88);
@@ -469,6 +477,7 @@ h1,
 .timeline-point {
   stroke: rgba(255, 255, 255, 0.5);
   stroke-width: 1.5;
+  filter: drop-shadow(0 0 0 rgba(138, 125, 179, 0));
 }
 
 .timeline-axis-label,
@@ -565,27 +574,50 @@ h1,
 
 .dashboard-tooltip-layer {
   position: fixed;
-  right: 24px;
-  bottom: 24px;
+  left: 24px;
+  top: 24px;
   z-index: 20;
   max-width: min(320px, calc(100vw - 32px));
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid rgba(138, 125, 179, 0.32);
   border-radius: 14px;
-  background: rgba(20, 18, 30, 0.96);
+  background:
+    linear-gradient(180deg, rgba(33, 28, 47, 0.98), rgba(20, 18, 30, 0.98));
   color: var(--text);
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.42);
   font-size: 13px;
   line-height: 1.45;
   pointer-events: none;
   opacity: 0;
-  transform: translateY(4px);
+  transform: translate3d(0, 4px, 0);
   transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .dashboard-tooltip-layer[data-visible="true"] {
   opacity: 1;
-  transform: translateY(0);
+  transform: translate3d(0, 0, 0);
+}
+
+.dashboard-tooltip-title,
+.dashboard-tooltip-body,
+.dashboard-tooltip-meta {
+  margin: 0;
+}
+
+.dashboard-tooltip-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dashboard-tooltip-body {
+  margin-top: 4px;
+  color: rgba(244, 246, 255, 0.9);
+}
+
+.dashboard-tooltip-meta {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 @media (max-width: 1023px) {
@@ -628,7 +660,7 @@ h1,
   }
 
   .dashboard-tooltip-layer {
-    right: 16px;
-    bottom: 16px;
+    left: 16px;
+    top: 16px;
   }
 }

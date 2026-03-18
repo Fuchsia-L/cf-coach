@@ -42,8 +42,40 @@
 
   const ROADMAP_VISIBLE_STAGE_COUNT = 5;
   const TAG_ABILITY_VISIBLE_COUNT = 10;
+  const TOOLTIP_TARGET_ATTRIBUTE = 'data-tooltip-title';
+  const TOOLTIP_OFFSET_X = 18;
+  const TOOLTIP_OFFSET_Y = 18;
+  const TOOLTIP_ESTIMATED_WIDTH = 260;
+  const TOOLTIP_ESTIMATED_HEIGHT = 104;
 
   const numberFormatter = new Intl.NumberFormat('en-US');
+
+  function buildTooltipContent(tooltip) {
+    const title = tooltip?.title ? String(tooltip.title) : '';
+    const body = tooltip?.body ? String(tooltip.body) : '';
+    const meta = tooltip?.meta ? String(tooltip.meta) : '';
+    const fallbackContent = tooltip?.content ? String(tooltip.content) : '';
+    const sections = [title, body, meta].filter(Boolean);
+
+    return sections.length > 0 ? sections.join(' · ') : fallbackContent;
+  }
+
+  function normalizeTooltipState(tooltip) {
+    const normalizedX = Number(tooltip?.x);
+    const normalizedY = Number(tooltip?.y);
+
+    return {
+      visible: tooltip?.visible === true,
+      panelName: tooltip?.panelName || null,
+      key: tooltip?.key || null,
+      title: tooltip?.title || '',
+      body: tooltip?.body || '',
+      meta: tooltip?.meta || '',
+      content: buildTooltipContent(tooltip),
+      x: Number.isFinite(normalizedX) ? normalizedX : null,
+      y: Number.isFinite(normalizedY) ? normalizedY : null,
+    };
+  }
 
   function createDashboardUiState(initialState = {}) {
     return {
@@ -53,12 +85,7 @@
       },
       expandedRoadmap: initialState.expandedRoadmap === true,
       expandedTagAbility: initialState.expandedTagAbility === true,
-      tooltip: {
-        visible: initialState.tooltip?.visible === true,
-        panelName: initialState.tooltip?.panelName || null,
-        key: initialState.tooltip?.key || null,
-        content: initialState.tooltip?.content || '',
-      },
+      tooltip: normalizeTooltipState(initialState.tooltip),
       profilePinned: initialState.profilePinned === true,
     };
   }
@@ -122,12 +149,7 @@
 
     return {
       ...currentState,
-      tooltip: {
-        visible: tooltip?.visible === true,
-        panelName: tooltip?.panelName || null,
-        key: tooltip?.key || null,
-        content: tooltip?.content || '',
-      },
+      tooltip: normalizeTooltipState(tooltip),
     };
   }
 
@@ -420,6 +442,124 @@
     return `${point.contestName || 'Contest'} · ${formatRatingDelta(point)} · ${formatNumber(point.newRating)}`;
   }
 
+  function buildSubmissionTooltipData(point) {
+    const title = point.title || point.problemId || 'Unknown problem';
+    const body = getSubmissionVerdictLabel(point.verdict);
+    const meta = formatTimestamp(point.timestamp);
+
+    return {
+      title,
+      body,
+      meta,
+      content: buildSubmissionTooltip({
+        ...point,
+        title,
+      }),
+    };
+  }
+
+  function buildRatingTrendTooltipData(point) {
+    const title = point.contestName || 'Contest';
+    const body = `Delta ${formatRatingDelta(point)}`;
+    const meta = `Rating ${formatNumber(point.newRating)}`;
+
+    return {
+      title,
+      body,
+      meta,
+      content: buildRatingTrendTooltip({
+        ...point,
+        contestName: title,
+      }),
+    };
+  }
+
+  function buildChartAreaPath(points, baselineY) {
+    if (!Array.isArray(points) || points.length === 0) {
+      return '';
+    }
+
+    const firstPoint = points[0];
+    const lastPoint = points[points.length - 1];
+    const commands = [`M ${firstPoint.x} ${baselineY}`, `L ${firstPoint.x} ${firstPoint.y}`];
+
+    points.slice(1).forEach((point) => {
+      commands.push(`L ${point.x} ${point.y}`);
+    });
+
+    commands.push(`L ${lastPoint.x} ${baselineY}`, 'Z');
+    return commands.join(' ');
+  }
+
+  function renderTooltipInner(tooltip) {
+    const normalizedTooltip = normalizeTooltipState(tooltip);
+
+    if (!normalizedTooltip.title && !normalizedTooltip.body && !normalizedTooltip.meta) {
+      return normalizedTooltip.content ? `<p class="dashboard-tooltip-body">${escapeHtml(normalizedTooltip.content)}</p>` : '';
+    }
+
+    return [
+      normalizedTooltip.title ? `<p class="dashboard-tooltip-title">${escapeHtml(normalizedTooltip.title)}</p>` : '',
+      normalizedTooltip.body ? `<p class="dashboard-tooltip-body">${escapeHtml(normalizedTooltip.body)}</p>` : '',
+      normalizedTooltip.meta ? `<p class="dashboard-tooltip-meta">${escapeHtml(normalizedTooltip.meta)}</p>` : '',
+    ].join('');
+  }
+
+  function getTooltipLayerStyle(tooltip) {
+    const normalizedTooltip = normalizeTooltipState(tooltip);
+
+    if (!Number.isFinite(normalizedTooltip.x) || !Number.isFinite(normalizedTooltip.y)) {
+      return '';
+    }
+
+    return `left:${normalizedTooltip.x}px;top:${normalizedTooltip.y}px;`;
+  }
+
+  function renderTooltipLayer(tooltip) {
+    const normalizedTooltip = normalizeTooltipState(tooltip);
+    const inlineStyle = getTooltipLayerStyle(normalizedTooltip);
+
+    return [
+      `<div class="dashboard-tooltip-layer" data-dashboard-tooltip-layer data-visible="${normalizedTooltip.visible ? 'true' : 'false'}" aria-hidden="${normalizedTooltip.visible ? 'false' : 'true'}"${inlineStyle ? ` style="${escapeHtml(inlineStyle)}"` : ''}>`,
+      renderTooltipInner(normalizedTooltip),
+      '</div>',
+    ].join('');
+  }
+
+  function getTooltipPosition(event, env) {
+    const clientX = Number(event?.clientX);
+    const clientY = Number(event?.clientY);
+
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+      return {};
+    }
+
+    const viewportWidth = Math.max(Number(env?.innerWidth) || 0, TOOLTIP_ESTIMATED_WIDTH + 24);
+    const viewportHeight = Math.max(Number(env?.innerHeight) || 0, TOOLTIP_ESTIMATED_HEIGHT + 24);
+    const maxX = Math.max(12, viewportWidth - TOOLTIP_ESTIMATED_WIDTH - 12);
+    const maxY = Math.max(12, viewportHeight - TOOLTIP_ESTIMATED_HEIGHT - 12);
+
+    return {
+      x: Math.min(Math.max(clientX + TOOLTIP_OFFSET_X, 12), maxX),
+      y: Math.min(Math.max(clientY + TOOLTIP_OFFSET_Y, 12), maxY),
+    };
+  }
+
+  function readTooltipTarget(target) {
+    if (!target || typeof target.getAttribute !== 'function') {
+      return null;
+    }
+
+    return normalizeTooltipState({
+      panelName: target.getAttribute('data-tooltip-panel'),
+      key: target.getAttribute('data-tooltip-key'),
+      title: target.getAttribute('data-tooltip-title'),
+      body: target.getAttribute('data-tooltip-body'),
+      meta: target.getAttribute('data-tooltip-meta'),
+      content: target.getAttribute('data-tooltip-content'),
+    });
+  }
+
   function buildSubmissionTimelineGeometry(items, options = {}) {
     const geometry = buildScatterGeometry(items, {
       width: options.width || 760,
@@ -581,13 +721,18 @@
       ].join('');
     }).join('');
 
-    const pointMarkup = geometry.points.map((point, index) => [
-      `<g class="trend-point-group" data-contest-name="${escapeHtml(point.contestName)}" data-tooltip-panel="rating-trend" data-tooltip-key="rating-trend-${escapeHtml(index)}" data-tooltip-content="${escapeHtml(buildRatingTrendTooltip(point))}">`,
-      `  <circle class="trend-point" cx="${point.x}" cy="${point.y}" r="5">`,
-      `    <title>${escapeHtml(point.contestName)} · ${escapeHtml(formatRatingDelta(point))}</title>`,
-      '  </circle>',
-      '</g>',
-    ].join('')).join('');
+    const areaPath = buildChartAreaPath(geometry.points, geometry.height - geometry.padding.bottom);
+
+    const pointMarkup = geometry.points.map((point, index) => {
+      const tooltip = buildRatingTrendTooltipData(point);
+
+      return [
+        `<g class="trend-point-group" data-contest-name="${escapeHtml(point.contestName)}" data-tooltip-panel="rating-trend" data-tooltip-key="rating-trend-${escapeHtml(index)}" data-tooltip-title="${escapeHtml(tooltip.title)}" data-tooltip-body="${escapeHtml(tooltip.body)}" data-tooltip-meta="${escapeHtml(tooltip.meta)}" data-tooltip-content="${escapeHtml(tooltip.content)}">`,
+        `  <circle class="trend-point" cx="${point.x}" cy="${point.y}" r="5">`,
+        '  </circle>',
+        '</g>',
+      ].join('');
+    }).join('');
 
     return renderPanelFrame(
       'rating-trend',
@@ -595,7 +740,14 @@
       'Contests',
       [
         `<svg class="trend-chart" viewBox="0 0 ${geometry.width} ${geometry.height}" role="img" aria-label="Rating trend chart">`,
+        '  <defs>',
+        '    <linearGradient id="rating-trend-fill" x1="0" y1="0" x2="0" y2="1">',
+        '      <stop offset="0%" stop-color="#8a7db3" stop-opacity="0.42"></stop>',
+        '      <stop offset="100%" stop-color="#8a7db3" stop-opacity="0"></stop>',
+        '    </linearGradient>',
+        '  </defs>',
         gridLines,
+        `<path class="trend-area" d="${escapeHtml(areaPath)}"></path>`,
         `<polyline class="trend-line" fill="none" points="${escapeHtml(geometry.polyline)}"></polyline>`,
         pointMarkup,
         '</svg>',
@@ -928,13 +1080,16 @@
       `<text class="timeline-axis-caption timeline-axis-caption-end chart-axis-label" x="740" y="272">${escapeHtml(formatTimestamp(geometry.maxTimestamp))}</text>`,
     ].join('');
 
-    const points = geometry.points.map((point, index) => [
-      `<g class="timeline-point-group" data-problem-id="${escapeHtml(point.problemId)}" data-verdict="${escapeHtml(point.verdictLabel)}" data-tooltip-panel="submission-timeline" data-tooltip-key="submission-timeline-${escapeHtml(index)}" data-tooltip-content="${escapeHtml(point.tooltip)}">`,
-      `  <circle class="timeline-point" cx="${point.x}" cy="${point.y}" r="5" fill="${escapeHtml(point.color)}" data-x="${escapeHtml(point.x)}" data-y="${escapeHtml(point.y)}">`,
-      `    <title>${escapeHtml(point.tooltip)}</title>`,
-      '  </circle>',
-      '</g>',
-    ].join('')).join('');
+    const points = geometry.points.map((point, index) => {
+      const tooltip = buildSubmissionTooltipData(point);
+
+      return [
+        `<g class="timeline-point-group" data-problem-id="${escapeHtml(point.problemId)}" data-verdict="${escapeHtml(point.verdictLabel)}" data-tooltip-panel="submission-timeline" data-tooltip-key="submission-timeline-${escapeHtml(index)}" data-tooltip-title="${escapeHtml(tooltip.title)}" data-tooltip-body="${escapeHtml(tooltip.body)}" data-tooltip-meta="${escapeHtml(tooltip.meta)}" data-tooltip-content="${escapeHtml(tooltip.content)}">`,
+        `  <circle class="timeline-point" cx="${point.x}" cy="${point.y}" r="7" fill="${escapeHtml(point.color)}" data-x="${escapeHtml(point.x)}" data-y="${escapeHtml(point.y)}">`,
+        '  </circle>',
+        '</g>',
+      ].join('');
+    }).join('');
 
     const legend = [
       '<div class="timeline-legend">',
@@ -990,7 +1145,8 @@
   }
 
   function renderDashboard(data, uiState = createDashboardUiState()) {
-    const tooltipState = uiState?.tooltip || {};
+    const normalizedUiState = createDashboardUiState(uiState);
+    const tooltipState = normalizedUiState.tooltip || {};
     const primaryColumnPanels = [
       renderPanelResource(data.ratingHistory, {
         panelName: 'rating-trend',
@@ -1009,7 +1165,7 @@
         loadingMessage: 'Loading tag performance...',
         errorMessage: 'Tag performance is unavailable.',
         renderer(tagStats) {
-          return renderTagAbilityPanel(tagStats, uiState);
+          return renderTagAbilityPanel(tagStats, normalizedUiState);
         },
       }),
       renderPanelResource(data.weak, {
@@ -1020,7 +1176,7 @@
         loadingMessage: 'Loading weak analysis...',
         errorMessage: 'Weak analysis is unavailable.',
         renderer(weak) {
-          return renderWeakAnalysisPanel(weak, uiState);
+          return renderWeakAnalysisPanel(weak, normalizedUiState);
         },
       }),
       renderPanelResource(data.submissions, {
@@ -1031,7 +1187,7 @@
         loadingMessage: 'Loading submission timeline...',
         errorMessage: 'Submission timeline is unavailable.',
         renderer(submissions) {
-          return renderSubmissionTimelinePanel(submissions, uiState);
+          return renderSubmissionTimelinePanel(submissions, normalizedUiState);
         },
       }),
     ].join('');
@@ -1044,7 +1200,7 @@
         loadingMessage: 'Loading roadmap progress...',
         errorMessage: 'Roadmap data is unavailable.',
         renderer(roadmap) {
-          return renderRoadmapPanel(roadmap, uiState);
+          return renderRoadmapPanel(roadmap, normalizedUiState);
         },
       }),
       renderPanelResource(data.ratingBuckets, {
@@ -1055,7 +1211,7 @@
         loadingMessage: 'Loading rating buckets...',
         errorMessage: 'Rating bucket data is unavailable.',
         renderer(ratingBuckets) {
-          return renderRatingBucketPanel(ratingBuckets, uiState);
+          return renderRatingBucketPanel(ratingBuckets, normalizedUiState);
         },
       }),
       renderPanelResource(data.next, {
@@ -1066,13 +1222,13 @@
         loadingMessage: 'Loading recommendations...',
         errorMessage: 'Recommendations are unavailable.',
         renderer(next) {
-          return renderNextProblemPanel(next, uiState);
+          return renderNextProblemPanel(next, normalizedUiState);
         },
       }),
     ].join('');
 
     return [
-      `<div class="dashboard-shell dashboard-shell-readable" data-dashboard-layout="masonry" data-dashboard-profile-pinned="${uiState?.profilePinned === true ? 'true' : 'false'}" data-dashboard-tooltip-visible="${tooltipState.visible === true ? 'true' : 'false'}">`,
+      `<div class="dashboard-shell dashboard-shell-readable" data-dashboard-layout="masonry" data-dashboard-profile-pinned="${normalizedUiState.profilePinned === true ? 'true' : 'false'}" data-dashboard-tooltip-visible="${tooltipState.visible === true ? 'true' : 'false'}">`,
       renderPanelResource(data.profile, {
         panelName: 'profile',
         title: 'Profile',
@@ -1081,14 +1237,14 @@
         loadingMessage: 'Loading profile summary...',
         errorMessage: 'Profile data is unavailable.',
         renderer(profile) {
-          return renderProfileBar(profile, uiState);
+          return renderProfileBar(profile, normalizedUiState);
         },
       }),
       '<div class="dashboard-grid dashboard-grid-masonry">',
       `  <div class="dashboard-column dashboard-column-primary" data-dashboard-column="primary">${primaryColumnPanels}</div>`,
       `  <div class="dashboard-column dashboard-column-secondary" data-dashboard-column="secondary">${secondaryColumnPanels}</div>`,
       '</div>',
-      `<div class="dashboard-tooltip-layer" data-dashboard-tooltip-layer data-visible="${tooltipState.visible === true ? 'true' : 'false'}" aria-hidden="${tooltipState.visible === true ? 'false' : 'true'}">${escapeHtml(tooltipState.content || '')}</div>`,
+      renderTooltipLayer(tooltipState),
       '</div>',
     ].join('');
   }
@@ -1146,9 +1302,10 @@
       }
 
       const tooltip = controllerState.uiState.tooltip || {};
-      tooltipLayer.textContent = tooltip.content || '';
+      tooltipLayer.innerHTML = renderTooltipInner(tooltip);
       tooltipLayer.setAttribute('data-visible', tooltip.visible ? 'true' : 'false');
       tooltipLayer.setAttribute('aria-hidden', tooltip.visible ? 'false' : 'true');
+      tooltipLayer.setAttribute('style', getTooltipLayerStyle(tooltip));
     }
 
     function render() {
@@ -1186,7 +1343,12 @@
         visible: true,
         panelName: tooltip?.panelName,
         key: tooltip?.key,
+        title: tooltip?.title,
+        body: tooltip?.body,
+        meta: tooltip?.meta,
         content: tooltip?.content,
+        x: tooltip?.x,
+        y: tooltip?.y,
       });
       updateTooltipLayer();
       return controllerState.uiState;
@@ -1238,23 +1400,46 @@
       };
 
       const handleMouseOver = (event) => {
-        const tooltipTarget = findClosestAttributeTarget(event.target, 'data-tooltip-content');
+        const tooltipTarget = findClosestAttributeTarget(event.target, TOOLTIP_TARGET_ATTRIBUTE);
 
         if (!tooltipTarget || typeof tooltipTarget.getAttribute !== 'function') {
           return;
         }
 
         showTooltip({
-          panelName: tooltipTarget.getAttribute('data-tooltip-panel'),
-          key: tooltipTarget.getAttribute('data-tooltip-key'),
-          content: tooltipTarget.getAttribute('data-tooltip-content'),
+          ...readTooltipTarget(tooltipTarget),
+          ...getTooltipPosition(event, env),
+        });
+      };
+
+      const handleMouseMove = (event) => {
+        const tooltipTarget = findClosestAttributeTarget(event.target, TOOLTIP_TARGET_ATTRIBUTE);
+
+        if (!tooltipTarget) {
+          return;
+        }
+
+        showTooltip({
+          ...readTooltipTarget(tooltipTarget),
+          ...getTooltipPosition(event, env),
         });
       };
 
       const handleMouseOut = (event) => {
-        const tooltipTarget = findClosestAttributeTarget(event.target, 'data-tooltip-content');
+        const tooltipTarget = findClosestAttributeTarget(event.target, TOOLTIP_TARGET_ATTRIBUTE);
 
         if (!tooltipTarget) {
+          return;
+        }
+
+        const nextTooltipTarget = findClosestAttributeTarget(event.relatedTarget, TOOLTIP_TARGET_ATTRIBUTE);
+
+        if (
+          nextTooltipTarget
+          && typeof tooltipTarget.getAttribute === 'function'
+          && typeof nextTooltipTarget.getAttribute === 'function'
+          && tooltipTarget.getAttribute('data-tooltip-key') === nextTooltipTarget.getAttribute('data-tooltip-key')
+        ) {
           return;
         }
 
@@ -1277,9 +1462,11 @@
 
       root.addEventListener('click', handleClick);
       root.addEventListener('mouseover', handleMouseOver);
+      root.addEventListener('mousemove', handleMouseMove);
       root.addEventListener('mouseout', handleMouseOut);
       controllerState.teardownCallbacks.push(() => root.removeEventListener('click', handleClick));
       controllerState.teardownCallbacks.push(() => root.removeEventListener('mouseover', handleMouseOver));
+      controllerState.teardownCallbacks.push(() => root.removeEventListener('mousemove', handleMouseMove));
       controllerState.teardownCallbacks.push(() => root.removeEventListener('mouseout', handleMouseOut));
 
       if (env && typeof env.addEventListener === 'function' && typeof env.removeEventListener === 'function') {
@@ -1404,9 +1591,13 @@
     bootstrapDashboard,
     buildRatingTrendGeometry,
     buildRatingTrendTooltip,
+    buildRatingTrendTooltipData,
     buildScatterGeometry,
     buildSubmissionTimelineGeometry,
     buildSubmissionTooltip,
+    buildSubmissionTooltipData,
+    buildTooltipContent,
+    buildChartAreaPath,
     clearTooltipState,
     createDashboardController,
     createDashboardUiState,
@@ -1444,6 +1635,8 @@
     renderRoadmapPanel,
     renderSubmissionTimelinePanel,
     renderTagAbilityPanel,
+    renderTooltipInner,
+    renderTooltipLayer,
     renderWeakAnalysisPanel,
     setProfilePinnedState,
     setTooltipState,

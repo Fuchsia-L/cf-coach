@@ -6,7 +6,10 @@ const {
   ROADMAP_VISIBLE_STAGE_COUNT,
   TAG_ABILITY_VISIBLE_COUNT,
   buildRatingTrendGeometry,
+  buildRatingTrendTooltipData,
   buildSubmissionTimelineGeometry,
+  buildSubmissionTooltipData,
+  buildTooltipContent,
   createDashboardController,
   createDashboardUiState,
   formatRatingDelta,
@@ -26,6 +29,8 @@ const {
   renderRoadmapPanel,
   renderSubmissionTimelinePanel,
   renderTagAbilityPanel,
+  renderTooltipInner,
+  renderTooltipLayer,
   renderWeakAnalysisPanel,
   sortTagStats,
   toggleRoadmapExpanded,
@@ -230,7 +235,7 @@ test('renderProfileBar includes handle, rank, rating, accepted, submissions, and
   assert.match(html, /Attempted/);
 });
 
-test('renderRatingTrendPanel outputs svg line chart with contest tooltip titles', () => {
+test('renderRatingTrendPanel outputs gradient area markup and custom tooltip metadata', () => {
   const html = renderRatingTrendPanel({
     items: [
       { contestName: 'Round 1', timestamp: 100, oldRating: 900, newRating: 950, delta: 50 },
@@ -240,9 +245,13 @@ test('renderRatingTrendPanel outputs svg line chart with contest tooltip titles'
 
   assert.match(html, /data-panel="rating-trend"/);
   assert.match(html, /<svg/);
+  assert.match(html, /<linearGradient id="rating-trend-fill"/);
+  assert.match(html, /class="trend-area"/);
   assert.match(html, /<polyline/);
-  assert.match(html, /<title>Round 1 · \+50<\/title>/);
-  assert.match(html, /<title>Round 2 · \+50<\/title>/);
+  assert.match(html, /data-tooltip-title="Round 1"/);
+  assert.match(html, /data-tooltip-body="Delta \+50"/);
+  assert.match(html, /data-tooltip-meta="Rating 950"/);
+  assert.doesNotMatch(html, /<title>/);
 });
 
 test('renderRoadmapPanel defaults to a five-stage window around the current stage', () => {
@@ -481,7 +490,7 @@ test('renderNextProblemPanel shows anchor and prerequisite cards with external l
   assert.match(html, /problemset\/problem\/401\/B/);
 });
 
-test('renderSubmissionTimelinePanel colors points by verdict and includes tooltip details', () => {
+test('renderSubmissionTimelinePanel colors points by verdict with larger circles and custom tooltip metadata', () => {
   const html = renderSubmissionTimelinePanel({
     items: [
       { timestamp: 1000, rating: 800, verdict: 'WRONG_ANSWER', problemId: '100A', title: 'Sort Warmup', tags: ['sortings'] },
@@ -496,8 +505,44 @@ test('renderSubmissionTimelinePanel colors points by verdict and includes toolti
   assert.match(html, /fill="#56d364"/);
   assert.match(html, /fill="#ff8f00"/);
   assert.match(html, /fill="#93a1c6"/);
-  assert.match(html, /<title>Sort Warmup · WA · 1970-01-01 00:16:40 UTC<\/title>/);
-  assert.match(html, /<title>Binary Four · TLE · 1970-01-01 00:17:50 UTC<\/title>/);
+  assert.match(html, /class="timeline-point"[^>]*r="7"/);
+  assert.match(html, /data-tooltip-title="Sort Warmup"/);
+  assert.match(html, /data-tooltip-body="WA"/);
+  assert.match(html, /data-tooltip-meta="1970-01-01 00:16:40 UTC"/);
+  assert.match(html, /data-tooltip-title="Binary Four"/);
+  assert.doesNotMatch(html, /<title>/);
+});
+
+test('custom tooltip helpers format rating and submission content for themed tooltip rendering', () => {
+  const ratingTooltip = buildRatingTrendTooltipData({
+    contestName: 'Round 9',
+    oldRating: 1200,
+    newRating: 1275,
+    delta: 75,
+  });
+  const submissionTooltip = buildSubmissionTooltipData({
+    timestamp: 1000,
+    verdict: 'WRONG_ANSWER',
+    problemId: '100A',
+    title: 'Sort Warmup',
+  });
+
+  assert.deepEqual(ratingTooltip, {
+    title: 'Round 9',
+    body: 'Delta +75',
+    meta: 'Rating 1,275',
+    content: 'Round 9 · +75 · 1,275',
+  });
+  assert.deepEqual(submissionTooltip, {
+    title: 'Sort Warmup',
+    body: 'WA',
+    meta: '1970-01-01 00:16:40 UTC',
+    content: 'Sort Warmup · WA · 1970-01-01 00:16:40 UTC',
+  });
+  assert.equal(buildTooltipContent(ratingTooltip), 'Round 9 · Delta +75 · Rating 1,275');
+  assert.match(renderTooltipInner(ratingTooltip), /dashboard-tooltip-title">Round 9</);
+  assert.match(renderTooltipInner(submissionTooltip), /dashboard-tooltip-meta">1970-01-01 00:16:40 UTC</);
+  assert.match(renderTooltipLayer({ visible: true, ...ratingTooltip, x: 44, y: 88 }), /style="left:44px;top:88px;"/);
 });
 
 test('bottom panels render clear empty and error states', () => {
@@ -537,7 +582,9 @@ test('renderDashboard includes masonry layout, readable typography hooks, sticky
         visible: true,
         panelName: 'submission-timeline',
         key: 'submission-timeline-0',
-        content: 'Sort Warmup · WA · 1970-01-01 00:16:40 UTC',
+        title: 'Sort Warmup',
+        body: 'WA',
+        meta: '1970-01-01 00:16:40 UTC',
       },
     })
   );
@@ -554,9 +601,12 @@ test('renderDashboard includes masonry layout, readable typography hooks, sticky
   assert.match(html, /data-dashboard-toggle="roadmap"/);
   assert.match(html, /data-panel-body="roadmap" hidden/);
   assert.match(html, /data-dashboard-tooltip-layer/);
-  assert.match(html, /Sort Warmup · WA · 1970-01-01 00:16:40 UTC/);
+  assert.match(html, /dashboard-tooltip-title">Sort Warmup</);
+  assert.match(html, /dashboard-tooltip-body">WA</);
+  assert.match(html, /dashboard-tooltip-meta">1970-01-01 00:16:40 UTC</);
   assert.match(html, /data-tooltip-panel="rating-trend"/);
   assert.match(html, /data-tooltip-content="Round 1 · \+50 · 950"/);
+  assert.match(html, /data-tooltip-title="Round 1"/);
   assert.match(html, /data-tooltip-panel="submission-timeline"/);
 });
 

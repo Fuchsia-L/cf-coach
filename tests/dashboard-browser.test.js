@@ -163,6 +163,9 @@ test('dashboard browser smoke test loads the page and renders all core panels fr
     assert.match(cssResponse.body, /\.panel-kicker,[\s\S]*font-size:\s*13px;/);
     assert.match(cssResponse.body, /\.panel-title,[\s\S]*font-size:\s*30px;/);
     assert.match(cssResponse.body, /\.chart-axis-label\s*\{[\s\S]*font-size:\s*13px;/);
+    assert.match(cssResponse.body, /\.trend-area\s*\{[\s\S]*fill:\s*url\(#rating-trend-fill\)/);
+    assert.match(cssResponse.body, /\.timeline-point-group:hover \.timeline-point\s*\{[\s\S]*r:\s*9;/);
+    assert.match(cssResponse.body, /\.dashboard-tooltip-title\s*\{[\s\S]*font-weight:\s*700;/);
     assert.match(cssResponse.body, /\.panel\[data-dashboard-sticky="profile"\]\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*24px;/);
     assert.match(cssResponse.body, /\.panel:hover\s*\{[\s\S]*transform:\s*translateY\(-3px\);/);
     assert.match(cssResponse.body, /\.problem-card:hover\s*\{[\s\S]*transform:\s*translateY\(-3px\);/);
@@ -217,6 +220,14 @@ test('dashboard browser smoke test loads the page and renders all core panels fr
     assert.match(root.innerHTML, /panel-title-readable/);
     assert.match(root.innerHTML, /panel-kicker-readable/);
     assert.match(root.innerHTML, /chart-axis-label/);
+    assert.match(root.innerHTML, /<linearGradient id="rating-trend-fill"/);
+    assert.match(root.innerHTML, /class="trend-area"/);
+    assert.match(root.innerHTML, /class="timeline-point"[^>]*r="7"/);
+    assert.match(root.innerHTML, /data-tooltip-title="Round 1"/);
+    assert.match(root.innerHTML, /data-tooltip-body="Delta \+60"/);
+    assert.match(root.innerHTML, /data-tooltip-title="Sort Warmup"/);
+    assert.match(root.innerHTML, /dashboard-tooltip-layer/);
+    assert.doesNotMatch(root.innerHTML, /<title>/);
     assert.match(root.innerHTML, /Round 1/);
     assert.match(root.innerHTML, /Show all 20 stages/);
     assert.match(root.innerHTML, /Stage 1/);
