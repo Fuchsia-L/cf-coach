@@ -12,7 +12,76 @@
     submissions: '/api/submissions',
   };
 
+  const REVIEW_TYPE_ORDER = ['A', 'B', 'C', 'D'];
+  const REVIEW_TYPE_DEFINITIONS = {
+    A: {
+      label: 'Syntax',
+      format: '语法名称 + 用法说明',
+      fields: [
+        {
+          name: 'syntaxName',
+          label: 'Syntax name',
+          placeholder: 'lower_bound',
+        },
+        {
+          name: 'usageNote',
+          label: 'Usage note',
+          placeholder: 'Returns the first iterator >= value.',
+        },
+      ],
+    },
+    B: {
+      label: 'Strategy',
+      format: '题目描述 + 解题策略',
+      fields: [
+        {
+          name: 'problemContext',
+          label: 'Problem context',
+          placeholder: 'CF 1735C — LCM + grouping',
+        },
+        {
+          name: 'strategy',
+          label: 'Strategy',
+          placeholder: 'Think DSU and greedily merge by lexicographic order.',
+        },
+      ],
+    },
+    C: {
+      label: 'Pitfall',
+      format: '踩坑原因 + 下次如何避免',
+      fields: [
+        {
+          name: 'pitfall',
+          label: 'Pitfall',
+          placeholder: 'Array out of bounds in DSU find.',
+        },
+        {
+          name: 'prevention',
+          label: 'Avoid next time',
+          placeholder: 'Write asserts before the first full submission.',
+        },
+      ],
+    },
+    D: {
+      label: 'Knowledge',
+      format: '解决哪种问题 + 简易写法',
+      fields: [
+        {
+          name: 'problemType',
+          label: 'Problem type',
+          placeholder: 'Interval merge',
+        },
+        {
+          name: 'snippet',
+          label: 'Simple pattern',
+          placeholder: 'Sort by left endpoint, then merge overlaps.',
+        },
+      ],
+    },
+  };
+
   const DASHBOARD_SECTION_IDS = [
+    'review-entry',
     'rating-trend',
     'roadmap',
     'tag-ability',
@@ -87,7 +156,164 @@
       expandedTagAbility: initialState.expandedTagAbility === true,
       tooltip: normalizeTooltipState(initialState.tooltip),
       profilePinned: initialState.profilePinned === true,
+      reviewComposer: createReviewComposerState(initialState.reviewComposer),
     };
+  }
+
+  function createEmptyReviewDrafts() {
+    return REVIEW_TYPE_ORDER.reduce((result, type) => {
+      result[type] = REVIEW_TYPE_DEFINITIONS[type].fields.reduce((draft, field) => {
+        draft[field.name] = '';
+        return draft;
+      }, {});
+      return result;
+    }, {});
+  }
+
+  function cloneReviewDrafts(source) {
+    const emptyDrafts = createEmptyReviewDrafts();
+
+    return REVIEW_TYPE_ORDER.reduce((result, type) => {
+      result[type] = {
+        ...emptyDrafts[type],
+        ...(source && source[type] ? source[type] : {}),
+      };
+      return result;
+    }, {});
+  }
+
+  function getReviewTypeDefinition(type) {
+    return REVIEW_TYPE_DEFINITIONS[type] || REVIEW_TYPE_DEFINITIONS.A;
+  }
+
+  function createReviewComposerState(initialState = {}) {
+    const selectedType = REVIEW_TYPE_ORDER.includes(initialState.selectedType) ? initialState.selectedType : 'A';
+
+    return {
+      selectedType,
+      drafts: cloneReviewDrafts(initialState.drafts),
+      submitting: initialState.submitting === true,
+      feedback: {
+        kind: initialState.feedback?.kind === 'success' || initialState.feedback?.kind === 'error'
+          ? initialState.feedback.kind
+          : 'idle',
+        message: initialState.feedback?.message ? String(initialState.feedback.message) : '',
+      },
+    };
+  }
+
+  function setReviewComposerType(uiState, type) {
+    const currentState = createDashboardUiState(uiState);
+    const selectedType = REVIEW_TYPE_ORDER.includes(type) ? type : currentState.reviewComposer.selectedType;
+
+    return {
+      ...currentState,
+      reviewComposer: {
+        ...currentState.reviewComposer,
+        selectedType,
+        feedback: {
+          kind: 'idle',
+          message: '',
+        },
+      },
+    };
+  }
+
+  function setReviewComposerField(uiState, fieldName, value) {
+    const currentState = createDashboardUiState(uiState);
+    const composer = createReviewComposerState(currentState.reviewComposer);
+    const selectedType = composer.selectedType;
+
+    if (!Object.prototype.hasOwnProperty.call(composer.drafts[selectedType], fieldName)) {
+      return currentState;
+    }
+
+    return {
+      ...currentState,
+      reviewComposer: {
+        ...composer,
+        drafts: {
+          ...composer.drafts,
+          [selectedType]: {
+            ...composer.drafts[selectedType],
+            [fieldName]: String(value ?? ''),
+          },
+        },
+        feedback: {
+          kind: 'idle',
+          message: '',
+        },
+      },
+    };
+  }
+
+  function setReviewComposerSubmitting(uiState, submitting) {
+    const currentState = createDashboardUiState(uiState);
+
+    return {
+      ...currentState,
+      reviewComposer: {
+        ...currentState.reviewComposer,
+        submitting: submitting === true,
+      },
+    };
+  }
+
+  function setReviewComposerFeedback(uiState, kind, message) {
+    const currentState = createDashboardUiState(uiState);
+
+    return {
+      ...currentState,
+      reviewComposer: {
+        ...currentState.reviewComposer,
+        submitting: false,
+        feedback: {
+          kind,
+          message: String(message || ''),
+        },
+      },
+    };
+  }
+
+  function clearReviewComposerDraft(uiState, type) {
+    const currentState = createDashboardUiState(uiState);
+    const selectedType = REVIEW_TYPE_ORDER.includes(type) ? type : currentState.reviewComposer.selectedType;
+    const definition = getReviewTypeDefinition(selectedType);
+    const nextDraft = definition.fields.reduce((result, field) => {
+      result[field.name] = '';
+      return result;
+    }, {});
+
+    return {
+      ...currentState,
+      reviewComposer: {
+        ...currentState.reviewComposer,
+        submitting: false,
+        drafts: {
+          ...currentState.reviewComposer.drafts,
+          [selectedType]: nextDraft,
+        },
+      },
+    };
+  }
+
+  function buildReviewCreatePayload(reviewComposerState) {
+    const composer = createReviewComposerState(reviewComposerState);
+    const definition = getReviewTypeDefinition(composer.selectedType);
+    const draft = composer.drafts[composer.selectedType] || {};
+    const payload = { type: composer.selectedType };
+
+    for (const field of definition.fields) {
+      const value = typeof draft[field.name] === 'string' ? draft[field.name].trim() : '';
+
+      if (!value) {
+        throw new Error(`${field.label} is required.`);
+      }
+
+      payload[field.name] = value;
+    }
+
+    return payload;
   }
 
   function isPanelCollapsible(panelName) {
@@ -669,6 +895,51 @@
     return options.renderer(panelResource ? panelResource.payload : resource);
   }
 
+  function renderReviewComposerPanel(uiState) {
+    const composer = createReviewComposerState(uiState?.reviewComposer);
+    const definition = getReviewTypeDefinition(composer.selectedType);
+    const draft = composer.drafts[composer.selectedType] || {};
+    const typeButtons = REVIEW_TYPE_ORDER.map((type) => {
+      const active = composer.selectedType === type;
+      const typeDefinition = getReviewTypeDefinition(type);
+
+      return [
+        `<button class="review-type-button${active ? ' is-active' : ''}" type="button" data-review-type="${escapeHtml(type)}" aria-pressed="${active ? 'true' : 'false'}">`,
+        `  <span class="review-type-button-code">${escapeHtml(type)}</span>`,
+        `  <span class="review-type-button-label">${escapeHtml(typeDefinition.label)}</span>`,
+        '</button>',
+      ].join('');
+    }).join('');
+    const fieldMarkup = definition.fields.map((field) => [
+      `<label class="review-field" data-review-field-group="${escapeHtml(field.name)}">`,
+      `  <span class="review-field-label">${escapeHtml(field.label)}</span>`,
+      `  <input class="review-input" type="text" name="${escapeHtml(field.name)}" data-review-field="${escapeHtml(field.name)}" value="${escapeHtml(draft[field.name] || '')}" placeholder="${escapeHtml(field.placeholder)}" autocomplete="off"${composer.submitting ? ' disabled' : ''}>`,
+      '</label>',
+    ].join('')).join('');
+    const feedbackMarkup = composer.feedback.kind !== 'idle' && composer.feedback.message
+      ? `<p class="review-feedback review-feedback-${escapeHtml(composer.feedback.kind)}" role="${composer.feedback.kind === 'error' ? 'alert' : 'status'}">${escapeHtml(composer.feedback.message)}</p>`
+      : '';
+
+    return renderPanelFrame(
+      'review-entry',
+      'Add Review',
+      'Spaced review',
+      [
+        '<form class="review-form" data-review-form="true">',
+        '  <p class="panel-hint">Capture a new review item in a stable two-field format. New items start at stage 0 and are scheduled for tomorrow.</p>',
+        `  <div class="review-type-switcher" aria-label="Review type">${typeButtons}</div>`,
+        `  <p class="review-format-hint">Format: ${escapeHtml(definition.format)}</p>`,
+        `  <div class="review-fields">${fieldMarkup}</div>`,
+        `  ${feedbackMarkup}`,
+        '  <div class="review-form-actions">',
+        `    <button class="panel-toggle review-submit-button" type="submit"${composer.submitting ? ' disabled' : ''}>${composer.submitting ? 'Adding...' : 'Add Review'}</button>`,
+        '  </div>',
+        '</form>',
+      ].join(''),
+      'panel-review-entry'
+    );
+  }
+
   function renderProfileBar(profile, uiState) {
     const ratingColor = getCodeforcesRatingColor(profile?.rating);
 
@@ -1192,6 +1463,7 @@
       }),
     ].join('');
     const secondaryColumnPanels = [
+      renderReviewComposerPanel(normalizedUiState),
       renderPanelResource(data.roadmap, {
         panelName: 'roadmap',
         title: 'Roadmap',
@@ -1366,6 +1638,70 @@
       return controllerState.uiState;
     }
 
+    function setReviewType(type) {
+      controllerState.uiState = setReviewComposerType(controllerState.uiState, type);
+      return render();
+    }
+
+    function updateReviewField(fieldName, value) {
+      controllerState.uiState = setReviewComposerField(controllerState.uiState, fieldName, value);
+      return render();
+    }
+
+    async function submitReview() {
+      if (!env || typeof env.fetch !== 'function') {
+        controllerState.uiState = setReviewComposerFeedback(
+          controllerState.uiState,
+          'error',
+          'Review creation is unavailable because fetch is missing.'
+        );
+        render();
+        return { ok: false, error: new Error('Review creation is unavailable because fetch is missing.') };
+      }
+
+      let payload;
+
+      try {
+        payload = buildReviewCreatePayload(controllerState.uiState.reviewComposer);
+      } catch (error) {
+        controllerState.uiState = setReviewComposerFeedback(controllerState.uiState, 'error', error.message);
+        render();
+        return { ok: false, error };
+      }
+
+      controllerState.uiState = setReviewComposerSubmitting(controllerState.uiState, true);
+      render();
+
+      try {
+        const response = await env.fetch('/api/review', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        const result = await readJsonResponse(response, '/api/review');
+
+        controllerState.uiState = clearReviewComposerDraft(controllerState.uiState, payload.type);
+        controllerState.uiState = setReviewComposerFeedback(
+          controllerState.uiState,
+          'success',
+          `Created review item for ${result?.item?.nextReviewDate || 'tomorrow'}.`
+        );
+        render();
+
+        return {
+          ok: true,
+          item: result?.item || null,
+          payload: result,
+        };
+      } catch (error) {
+        controllerState.uiState = setReviewComposerFeedback(controllerState.uiState, 'error', error.message);
+        render();
+        return { ok: false, error };
+      }
+    }
+
     function getState() {
       return createDashboardUiState(controllerState.uiState);
     }
@@ -1376,6 +1712,13 @@
       }
 
       const handleClick = (event) => {
+        const reviewTypeButton = findClosestAttributeTarget(event.target, 'data-review-type');
+
+        if (reviewTypeButton && typeof reviewTypeButton.getAttribute === 'function') {
+          setReviewType(reviewTypeButton.getAttribute('data-review-type'));
+          return;
+        }
+
         const roadmapToggleButton = findClosestAttributeTarget(event.target, 'data-dashboard-roadmap-toggle');
 
         if (roadmapToggleButton) {
@@ -1397,6 +1740,30 @@
         }
 
         togglePanel(toggleButton.getAttribute('data-dashboard-toggle'));
+      };
+
+      const handleInput = (event) => {
+        const field = findClosestAttributeTarget(event.target, 'data-review-field');
+
+        if (!field || typeof field.getAttribute !== 'function') {
+          return;
+        }
+
+        updateReviewField(field.getAttribute('data-review-field'), event.target?.value);
+      };
+
+      const handleSubmit = (event) => {
+        const form = findClosestAttributeTarget(event.target, 'data-review-form');
+
+        if (!form) {
+          return;
+        }
+
+        if (typeof event.preventDefault === 'function') {
+          event.preventDefault();
+        }
+
+        submitReview().catch(() => null);
       };
 
       const handleMouseOver = (event) => {
@@ -1461,13 +1828,17 @@
       };
 
       root.addEventListener('click', handleClick);
+      root.addEventListener('input', handleInput);
       root.addEventListener('mouseover', handleMouseOver);
       root.addEventListener('mousemove', handleMouseMove);
       root.addEventListener('mouseout', handleMouseOut);
+      root.addEventListener('submit', handleSubmit);
       controllerState.teardownCallbacks.push(() => root.removeEventListener('click', handleClick));
+      controllerState.teardownCallbacks.push(() => root.removeEventListener('input', handleInput));
       controllerState.teardownCallbacks.push(() => root.removeEventListener('mouseover', handleMouseOver));
       controllerState.teardownCallbacks.push(() => root.removeEventListener('mousemove', handleMouseMove));
       controllerState.teardownCallbacks.push(() => root.removeEventListener('mouseout', handleMouseOut));
+      controllerState.teardownCallbacks.push(() => root.removeEventListener('submit', handleSubmit));
 
       if (env && typeof env.addEventListener === 'function' && typeof env.removeEventListener === 'function') {
         env.addEventListener('scroll', handleScroll, { passive: true });
@@ -1491,10 +1862,13 @@
       render,
       setData,
       setProfilePinned,
+      setReviewType,
       showTooltip,
+      submitReview,
       toggleRoadmapDisclosure,
       toggleTagAbilityDisclosure,
       togglePanel,
+      updateReviewField,
     };
   }
 
@@ -1588,7 +1962,10 @@
     API_ENDPOINTS,
     COLLAPSIBLE_PANEL_NAMES,
     DASHBOARD_SECTION_IDS,
+    REVIEW_TYPE_DEFINITIONS,
+    REVIEW_TYPE_ORDER,
     bootstrapDashboard,
+    buildReviewCreatePayload,
     buildRatingTrendGeometry,
     buildRatingTrendTooltip,
     buildRatingTrendTooltipData,
@@ -1600,6 +1977,7 @@
     buildChartAreaPath,
     clearTooltipState,
     createDashboardController,
+    createReviewComposerState,
     createDashboardUiState,
     createLinearScale,
     escapeHtml,
@@ -1614,6 +1992,7 @@
     getCodeforcesRatingColor,
     getRatingBucketColor,
     getRoadmapVisibleStages,
+    getReviewTypeDefinition,
     getRoadmapStageClasses,
     getSubmissionVerdictColor,
     getSubmissionVerdictLabel,
@@ -1632,16 +2011,22 @@
     renderProfileBar,
     renderRatingBucketPanel,
     renderRatingTrendPanel,
+    renderReviewComposerPanel,
     renderRoadmapPanel,
     renderSubmissionTimelinePanel,
     renderTagAbilityPanel,
     renderTooltipInner,
     renderTooltipLayer,
     renderWeakAnalysisPanel,
+    setReviewComposerField,
+    setReviewComposerFeedback,
+    setReviewComposerSubmitting,
+    setReviewComposerType,
     setProfilePinnedState,
     setTooltipState,
     sortTagStats,
     TAG_ABILITY_VISIBLE_COUNT,
+    clearReviewComposerDraft,
     toggleRoadmapExpanded,
     toggleTagAbilityExpanded,
     togglePanelExpanded,

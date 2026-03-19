@@ -17,13 +17,14 @@ function writeText(filePath, value) {
   fs.writeFileSync(filePath, value, 'utf8');
 }
 
-function request(port, requestPath) {
+function request(port, requestPath, options = {}) {
   return new Promise((resolve, reject) => {
     const req = http.request({
       host: '127.0.0.1',
       port,
       path: requestPath,
-      method: 'GET',
+      method: options.method || 'GET',
+      headers: options.headers || {},
     }, (res) => {
       const chunks = [];
 
@@ -38,8 +39,45 @@ function request(port, requestPath) {
     });
 
     req.on('error', reject);
+
+    if (options.body) {
+      req.write(options.body);
+    }
+
     req.end();
   });
+}
+
+function createReviewPayload(type) {
+  if (type === 'A') {
+    return {
+      type,
+      syntaxName: 'lower_bound',
+      usageNote: 'Returns the first iterator >= value.',
+    };
+  }
+
+  if (type === 'B') {
+    return {
+      type,
+      problemContext: 'CF 1735C — LCM + grouping',
+      strategy: 'Think DSU and greedily merge by lexicographic order.',
+    };
+  }
+
+  if (type === 'C') {
+    return {
+      type,
+      pitfall: 'Array out of bounds in DSU find.',
+      prevention: 'Write asserts before the first full submission.',
+    };
+  }
+
+  return {
+    type,
+    problemType: 'Interval merge',
+    snippet: 'Sort by left endpoint, then merge overlaps.',
+  };
 }
 
 function makeSubmission({ id, problemKey, name = problemKey, rating, tags, verdict = 'OK', creationTimeSeconds }) {
@@ -153,8 +191,9 @@ function createFixtureHome(options = {}) {
   };
 }
 
-async function withServer(env, callback) {
-  const serverRef = createDashboardServer({ env });
+async function withServer(options, callback) {
+  const serverOptions = options && options.env ? options : { env: options };
+  const serverRef = createDashboardServer(serverOptions);
   const port = await serverRef.listen(0);
 
   try {
@@ -384,6 +423,90 @@ test('GET /api/submissions returns normalized full submission records', async ()
       title: 'Binary Four',
       tags: ['binary search'],
     });
+  });
+});
+
+test('POST /api/review creates valid A/B/C/D review items and persists them to review.json', async () => {
+  const fixture = createFixtureHome();
+  const fixedNow = '2026-03-19T15:00:00.000Z';
+
+  await withServer({ env: fixture.env, now: fixedNow }, async (port) => {
+    for (const type of ['A', 'B', 'C', 'D']) {
+      const response = await request(port, '/api/review', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(createReviewPayload(type)),
+      });
+      const payload = JSON.parse(response.body);
+
+      assert.equal(response.statusCode, 201);
+      assert.equal(payload.item.type, type);
+      assert.equal(payload.item.stage, 0);
+      assert.equal(payload.item.completed, false);
+      assert.equal(payload.item.nextReviewDate, '2026-03-20');
+      assert.equal(payload.item.createdAt, fixedNow);
+      assert.match(payload.item.id, /^r_1773932400000(?:_\d+)?$/);
+      assert.match(payload.item.content, /—/);
+    }
+
+    const savedItems = JSON.parse(
+      fs.readFileSync(path.join(fixture.homeDir, '.cf-coach', 'review.json'), 'utf8')
+    );
+
+    assert.equal(savedItems.length, 4);
+    assert.deepEqual(savedItems.map((item) => item.type), ['A', 'B', 'C', 'D']);
+    assert.deepEqual(savedItems.map((item) => item.stage), [0, 0, 0, 0]);
+    assert.deepEqual(savedItems.map((item) => item.completed), [false, false, false, false]);
+    assert.deepEqual(savedItems.map((item) => item.nextReviewDate), [
+      '2026-03-20',
+      '2026-03-20',
+      '2026-03-20',
+      '2026-03-20',
+    ]);
+  });
+});
+
+test('POST /api/review rejects unknown types, empty fields, and mismatched fixed-format payloads', async () => {
+  const fixture = createFixtureHome();
+
+  await withServer({ env: fixture.env, now: '2026-03-19T15:00:00.000Z' }, async (port) => {
+    const invalidRequests = [
+      {
+        body: { type: 'Z', syntaxName: 'lower_bound', usageNote: 'note' },
+        message: 'type must be A, B, C, or D.',
+      },
+      {
+        body: { type: 'A', syntaxName: '   ', usageNote: 'note' },
+        message: 'Syntax name is required.',
+      },
+      {
+        body: { type: 'B', content: 'already flattened' },
+        message: 'Unexpected review payload field: content.',
+      },
+    ];
+
+    for (const invalidRequest of invalidRequests) {
+      const response = await request(port, '/api/review', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(invalidRequest.body),
+      });
+      const payload = JSON.parse(response.body);
+
+      assert.equal(response.statusCode, 400);
+      assert.equal(payload.error.code, 'INVALID_REVIEW_PAYLOAD');
+      assert.equal(payload.error.message, invalidRequest.message);
+    }
+
+    const savedItems = JSON.parse(
+      fs.readFileSync(path.join(fixture.homeDir, '.cf-coach', 'review.json'), 'utf8')
+    );
+
+    assert.deepEqual(savedItems, []);
   });
 });
 

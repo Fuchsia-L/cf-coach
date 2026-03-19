@@ -4,19 +4,23 @@ const assert = require('node:assert/strict');
 const {
   COLLAPSIBLE_PANEL_NAMES,
   ROADMAP_VISIBLE_STAGE_COUNT,
+  REVIEW_TYPE_DEFINITIONS,
   TAG_ABILITY_VISIBLE_COUNT,
+  buildReviewCreatePayload,
   buildRatingTrendGeometry,
   buildRatingTrendTooltipData,
   buildSubmissionTimelineGeometry,
   buildSubmissionTooltipData,
   buildTooltipContent,
   createDashboardController,
+  createReviewComposerState,
   createDashboardUiState,
   formatRatingDelta,
   getBucketLabel,
   getCodeforcesRatingColor,
   getRatingBucketColor,
   getRoadmapVisibleStages,
+  getReviewTypeDefinition,
   getSubmissionVerdictColor,
   isPanelExpanded,
   isRoadmapExpanded,
@@ -26,12 +30,14 @@ const {
   renderProfileBar,
   renderRatingBucketPanel,
   renderRatingTrendPanel,
+  renderReviewComposerPanel,
   renderRoadmapPanel,
   renderSubmissionTimelinePanel,
   renderTagAbilityPanel,
   renderTooltipInner,
   renderTooltipLayer,
   renderWeakAnalysisPanel,
+  setReviewComposerType,
   sortTagStats,
   toggleRoadmapExpanded,
   toggleTagAbilityExpanded,
@@ -185,6 +191,152 @@ test('dashboard ui state helpers support panel expansion defaults and local togg
 
   const restoredTagAbilityState = toggleTagAbilityExpanded(expandedTagAbilityState);
   assert.equal(isTagAbilityExpanded(restoredTagAbilityState), false);
+});
+
+test('review composer renders type-specific fields and updates the fixed format hint on type switch', () => {
+  const defaultComposer = createReviewComposerState();
+  const syntaxPanel = renderReviewComposerPanel({ reviewComposer: defaultComposer });
+  const knowledgePanel = renderReviewComposerPanel({
+    reviewComposer: createReviewComposerState({ selectedType: 'D' }),
+  });
+  const switchedState = setReviewComposerType(createDashboardUiState(), 'B');
+  const fullDashboard = renderDashboard(createDashboardFixture(), switchedState);
+
+  assert.deepEqual(Object.keys(REVIEW_TYPE_DEFINITIONS), ['A', 'B', 'C', 'D']);
+  assert.equal(getReviewTypeDefinition('A').fields[0].name, 'syntaxName');
+  assert.equal(getReviewTypeDefinition('D').fields[0].name, 'problemType');
+  assert.match(syntaxPanel, /Format: 语法名称 \+ 用法说明/);
+  assert.match(syntaxPanel, /name="syntaxName"/);
+  assert.match(syntaxPanel, /name="usageNote"/);
+  assert.doesNotMatch(syntaxPanel, /name="problemContext"/);
+  assert.match(knowledgePanel, /Format: 解决哪种问题 \+ 简易写法/);
+  assert.match(knowledgePanel, /name="problemType"/);
+  assert.match(knowledgePanel, /name="snippet"/);
+  assert.match(fullDashboard, /data-panel="review-entry"/);
+  assert.match(fullDashboard, /name="problemContext"/);
+  assert.doesNotMatch(fullDashboard, /name="syntaxName"/);
+});
+
+test('review composer client-side validation blocks empty fields before submit', async () => {
+  const root = {
+    innerHTML: '',
+    attributes: {},
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return this.attributes[name] || null;
+    },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const env = {
+    fetch: async () => {
+      throw new Error('fetch should not be called');
+    },
+  };
+  const controller = createDashboardController(env, root, {
+    data: createDashboardFixture(),
+  });
+
+  assert.throws(
+    () => buildReviewCreatePayload(createReviewComposerState()),
+    /Syntax name is required/
+  );
+
+  controller.render();
+  controller.setReviewType('C');
+  controller.updateReviewField('pitfall', 'Forgot bounds checks.');
+
+  const result = await controller.submitReview();
+
+  assert.equal(result.ok, false);
+  assert.equal(controller.getState().reviewComposer.feedback.kind, 'error');
+  assert.equal(controller.getState().reviewComposer.feedback.message, 'Avoid next time is required.');
+  assert.match(root.innerHTML, /Avoid next time is required/);
+});
+
+test('review composer submits successfully and surfaces server errors without a full reload', async () => {
+  const root = {
+    innerHTML: '',
+    attributes: {},
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return this.attributes[name] || null;
+    },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const fetchCalls = [];
+  const env = {
+    async fetch(requestPath, options) {
+      fetchCalls.push({ requestPath, options });
+
+      if (fetchCalls.length === 1) {
+        return {
+          ok: true,
+          async text() {
+            return JSON.stringify({
+              item: {
+                id: 'r_1',
+                type: 'D',
+                content: 'Interval merge — Sort by left endpoint.',
+                stage: 0,
+                nextReviewDate: '2026-03-20',
+                completed: false,
+                createdAt: '2026-03-19T15:00:00.000Z',
+              },
+            });
+          },
+        };
+      }
+
+      return {
+        ok: false,
+        async text() {
+          return JSON.stringify({
+            error: {
+              message: 'Snippet is required.',
+            },
+          });
+        },
+      };
+    },
+  };
+  const controller = createDashboardController(env, root, {
+    data: createDashboardFixture(),
+  });
+
+  controller.render();
+  controller.setReviewType('D');
+  controller.updateReviewField('problemType', 'Interval merge');
+  controller.updateReviewField('snippet', 'Sort by left endpoint.');
+
+  const successResult = await controller.submitReview();
+
+  assert.equal(successResult.ok, true);
+  assert.equal(fetchCalls[0].requestPath, '/api/review');
+  assert.equal(fetchCalls[0].options.method, 'POST');
+  assert.deepEqual(JSON.parse(fetchCalls[0].options.body), {
+    type: 'D',
+    problemType: 'Interval merge',
+    snippet: 'Sort by left endpoint.',
+  });
+  assert.equal(controller.getState().reviewComposer.feedback.kind, 'success');
+  assert.equal(controller.getState().reviewComposer.drafts.D.problemType, '');
+  assert.equal(controller.getState().reviewComposer.drafts.D.snippet, '');
+  assert.match(root.innerHTML, /Created review item for 2026-03-20/);
+
+  controller.updateReviewField('problemType', 'Prefix sums');
+  controller.updateReviewField('snippet', 'Compute prefix sums once.');
+  const errorResult = await controller.submitReview();
+
+  assert.equal(errorResult.ok, false);
+  assert.equal(controller.getState().reviewComposer.feedback.kind, 'error');
+  assert.equal(controller.getState().reviewComposer.feedback.message, 'Snippet is required.');
+  assert.match(root.innerHTML, /Snippet is required/);
 });
 
 test('rating trend geometry uses non-uniform x spacing based on timestamps', () => {

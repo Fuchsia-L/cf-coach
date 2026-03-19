@@ -3,6 +3,8 @@ const http = require('http');
 const path = require('path');
 
 const { createDashboardDataLayer } = require('./dashboard-data');
+const { ReviewCreateError, createReviewItem, resolveNow } = require('./review-creation');
+const { ReviewStorageError, loadReviewItems, saveReviewItems } = require('./review-storage');
 
 const DASHBOARD_ASSETS = {
   '/assets/dashboard.css': {
@@ -56,6 +58,91 @@ function writeJson(response, statusCode, payload) {
   );
 }
 
+function createJsonError(code, message, details) {
+  const payload = {
+    error: {
+      code,
+      message,
+    },
+  };
+
+  if (details && Object.keys(details).length > 0) {
+    payload.error.details = details;
+  }
+
+  return payload;
+}
+
+function readRequestBody(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+
+    request.on('data', (chunk) => {
+      chunks.push(chunk);
+    });
+    request.on('end', () => {
+      resolve(Buffer.concat(chunks).toString('utf8'));
+    });
+    request.on('error', reject);
+  });
+}
+
+async function readJsonRequestBody(request) {
+  const body = await readRequestBody(request);
+
+  if (!body.trim()) {
+    throw new ReviewCreateError('Request body must be a JSON object.');
+  }
+
+  let parsed;
+
+  try {
+    parsed = JSON.parse(body);
+  } catch (error) {
+    throw new ReviewCreateError('Request body must be valid JSON.');
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new ReviewCreateError('Request body must be a JSON object.');
+  }
+
+  return parsed;
+}
+
+function getRequestNow(options = {}) {
+  const nowValue = typeof options.now === 'function' ? options.now() : options.now;
+  return resolveNow(nowValue === undefined ? Date.now() : nowValue);
+}
+
+async function handleCreateReviewRequest(request, response, options = {}) {
+  try {
+    const payload = await readJsonRequestBody(request);
+    const reviewState = loadReviewItems(options.env);
+    const item = createReviewItem(payload, {
+      now: getRequestNow(options),
+      items: reviewState.items,
+    });
+
+    saveReviewItems(options.env, [...reviewState.items, item]);
+    writeJson(response, 201, {
+      item,
+      message: 'Review item created.',
+    });
+  } catch (error) {
+    if (error instanceof ReviewCreateError) {
+      writeJson(response, 400, createJsonError(error.code, error.message, error.details));
+      return;
+    }
+
+    if (error instanceof ReviewStorageError) {
+      writeJson(response, 500, createJsonError(error.code, error.message, error.details));
+      return;
+    }
+
+    writeJson(response, 500, createJsonError('INTERNAL_ERROR', error.message || 'Internal server error.'));
+  }
+}
+
 function serveStaticAsset(response, asset) {
   const body = fs.readFileSync(asset.filePath);
 
@@ -80,37 +167,46 @@ function createDashboardRequestHandler(options = {}) {
     '/api/submissions': () => dataLayer.getSubmissions(),
   };
 
-  return (request, response) => {
-    const requestUrl = new URL(request.url || '/', 'http://127.0.0.1');
-    const { pathname } = requestUrl;
-    const method = (request.method || 'GET').toUpperCase();
+  return async (request, response) => {
+    try {
+      const requestUrl = new URL(request.url || '/', 'http://127.0.0.1');
+      const { pathname } = requestUrl;
+      const method = (request.method || 'GET').toUpperCase();
 
-    if (pathname === '/' || pathname === '/index.html') {
-      writeResponse(response, 200, htmlShell, 'text/html; charset=utf-8');
-      return;
+      if (pathname === '/' || pathname === '/index.html') {
+        writeResponse(response, 200, htmlShell, 'text/html; charset=utf-8');
+        return;
+      }
+
+      const asset = DASHBOARD_ASSETS[pathname];
+
+      if (asset) {
+        serveStaticAsset(response, asset);
+        return;
+      }
+
+      if (pathname === '/api/review' && method === 'POST') {
+        await handleCreateReviewRequest(request, response, options);
+        return;
+      }
+
+      const apiRoute = method === 'GET' ? apiRoutes[pathname] : null;
+
+      if (apiRoute) {
+        const result = apiRoute();
+        writeJson(response, result.statusCode, result.payload);
+        return;
+      }
+
+      if (pathname.startsWith('/api/')) {
+        writeJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found' } });
+        return;
+      }
+
+      writeResponse(response, 404, 'Not found\n', 'text/plain; charset=utf-8');
+    } catch (error) {
+      writeJson(response, 500, createJsonError('INTERNAL_ERROR', error.message || 'Internal server error.'));
     }
-
-    const asset = DASHBOARD_ASSETS[pathname];
-
-    if (asset) {
-      serveStaticAsset(response, asset);
-      return;
-    }
-
-    const apiRoute = apiRoutes[pathname];
-
-    if (apiRoute) {
-      const result = apiRoute();
-      writeJson(response, result.statusCode, result.payload);
-      return;
-    }
-
-    if (pathname.startsWith('/api/')) {
-      writeJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found' } });
-      return;
-    }
-
-    writeResponse(response, 404, 'Not found\n', 'text/plain; charset=utf-8');
   };
 }
 
