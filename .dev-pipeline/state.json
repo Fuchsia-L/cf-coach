@@ -3,9 +3,9 @@
   "requirement": "# cf-coach 复习系统\n\n在现有 Dashboard 基础上增加间隔复习功能。\n\n## 核心概念\n\n用户做完题后手动添加复习条目，系统按间隔提醒复习。每条复习内容有生命周期，按 1→3→7→21 天间隔推进。\n\n## 复习条目类型\n\n四种类型，各有固定格式：\n\n### A: 语法类型\n- 格式：`语法名称 + 用法说明`\n- 例：`lower_bound` / `重载运算符写法`\n\n### B: 解题思路\n- 格式：`题目描述 + 解题策略`\n- 例：CF 1735C — 看到 LCM+分组 → 想并查集，按字典序贪心合并\n\n### C: 踩坑记录\n- 格式：`踩坑原因 + 下次如何避免`\n- 例：数组越界 — 并查集 find 里忘记判 size，下次先写 assert\n\n### D: 新知识点\n- 格式：`解决哪种问题 + 简易写法`\n- 例：区间合并 — sort by left, merge overlapping\n- **特殊规则**：D 类型在第 14 天额外显示一次（即间隔为 1→3→7→14→21）\n\n## 复习间隔与状态机\n\n每条复习条目有以下状态：\n\n```\nstage: 0 | 1 | 2 | 3 | 4 (对应 D 类型: 0 | 1 | 2 | 3 | 4 | 5)\nnextReviewDate: ISO date string\n```\n\n间隔规则：\n- 通用类型 (A/B/C): 第1天 → +3天 → +7天 → +21天 → 完成\n- D 类型: 第1天 → +3天 → +7天 → +14天 → +21天 → 完成\n\n用户操作：\n- **过按钮**：标记本次复习成功，推进到下一个 stage，计算下次复习日期\n- **重置按钮**：将 stage 重置为 0，nextReviewDate 设为明天（从头来过）\n- **不操作**：该条目第二天继续出现，整个周期不推进（stage 不变，nextReviewDate 设为明天）\n\n完成所有 stage 后，条目标记为 `completed: true`，不再出现在复习面板中。\n\n## 积压上限\n\n如果当天待复习条目超过 10 条，只显示最旧的 10 条（按 nextReviewDate 升序），剩余自动顺延到后续日期。避免积压导致用户放弃。\n\n## 数据存储\n\n### `~/.cf-coach/review.json`\n\n```json\n[\n  {\n    id: r_1710000000000,\n    type: A,\n    content: lower_bound",
   "workdir": "D:\\_PROJECTS\\cf-coach",
   "createdAt": "2026-03-19T07:16:55.517Z",
-  "updatedAt": "2026-03-19T07:29:02.470Z",
+  "updatedAt": "2026-03-19T07:30:03.780Z",
   "status": "in-progress",
-  "currentPhase": 1,
+  "currentPhase": 2,
   "plan": {
     "projectName": "cf-coach-review-system",
     "summary": "在现有 Node.js Dashboard/CLI 架构上新增一个本地 JSON 驱动的间隔复习子系统：先定义稳定的 review 条目存储与校验边界，再实现纯调度引擎来处理 A/B/C 与 D 类型的不同 stage 间隔、重置、逾期自愈与每日最多 10 条的积压控制，随后分别接入 Dashboard 创建入口和复习 API，最后把创建表单与复习面板整合到前端。这样的拆分既满足可独立测试，也修复了上一版中不必要的串行依赖，并把“不操作次日继续出现”的核心行为前移到调度/读取层。",
@@ -116,10 +116,11 @@
   },
   "phases": {
     "1": {
-      "status": "implementing",
-      "reviewCycles": 1,
+      "status": "completed",
+      "reviewCycles": 2,
       "testFixCycles": 1,
-      "startedAt": "2026-03-19T07:20:14.577Z"
+      "startedAt": "2026-03-19T07:20:14.577Z",
+      "completedAt": "2026-03-19T07:30:03.779Z"
     }
   },
   "finalReview": null,
@@ -164,6 +165,12 @@
       "timestamp": "2026-03-19T07:29:00.507Z",
       "step": "phase-1-fix",
       "message": "Review fix cycle 1",
+      "ok": true
+    },
+    {
+      "timestamp": "2026-03-19T07:30:03.588Z",
+      "step": "phase-1-review",
+      "message": "Claude review cycle 2",
       "ok": true
     }
   ]
