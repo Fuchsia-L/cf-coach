@@ -4,6 +4,7 @@ const path = require('path');
 
 const { createDashboardDataLayer } = require('./dashboard-data');
 const { ReviewCreateError, createReviewItem, resolveNow } = require('./review-creation');
+const { advanceReviewItem, resetReviewItem, selectReviewsDueToday } = require('./review-scheduling');
 const { ReviewStorageError, loadReviewItems, saveReviewItems } = require('./review-storage');
 
 const DASHBOARD_ASSETS = {
@@ -114,6 +115,53 @@ function getRequestNow(options = {}) {
   return resolveNow(nowValue === undefined ? Date.now() : nowValue);
 }
 
+function getRequestToday(options = {}) {
+  return getRequestNow(options).toISOString().slice(0, 10);
+}
+
+class ReviewSessionError extends Error {
+  constructor(message, code, details = {}) {
+    super(message);
+    this.name = 'ReviewSessionError';
+    this.code = code;
+    this.details = details;
+  }
+}
+
+function haveReviewItemsChanged(left, right) {
+  return JSON.stringify(left) !== JSON.stringify(right);
+}
+
+function loadScheduledReviewState(options = {}) {
+  const reviewState = loadReviewItems(options.env);
+  const scheduledState = selectReviewsDueToday(reviewState.items, {
+    today: getRequestToday(options),
+  });
+
+  if (haveReviewItemsChanged(reviewState.items, scheduledState.items)) {
+    saveReviewItems(options.env, scheduledState.items);
+  }
+
+  return scheduledState;
+}
+
+function findReviewItemIndex(items, itemId) {
+  return items.findIndex((item) => item.id === itemId);
+}
+
+function parseReviewActionPath(pathname) {
+  const match = /^\/api\/review\/([^/]+)\/(pass|reset)$/.exec(pathname);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    itemId: decodeURIComponent(match[1]),
+    action: match[2],
+  };
+}
+
 async function handleCreateReviewRequest(request, response, options = {}) {
   try {
     const payload = await readJsonRequestBody(request);
@@ -131,6 +179,75 @@ async function handleCreateReviewRequest(request, response, options = {}) {
   } catch (error) {
     if (error instanceof ReviewCreateError) {
       writeJson(response, 400, createJsonError(error.code, error.message, error.details));
+      return;
+    }
+
+    if (error instanceof ReviewStorageError) {
+      writeJson(response, 500, createJsonError(error.code, error.message, error.details));
+      return;
+    }
+
+    writeJson(response, 500, createJsonError('INTERNAL_ERROR', error.message || 'Internal server error.'));
+  }
+}
+
+function handleGetReviewRequest(response, options = {}) {
+  try {
+    const reviewState = loadScheduledReviewState(options);
+
+    writeJson(response, 200, {
+      items: reviewState.dueItems,
+      todayCount: reviewState.todayCount,
+      totalActive: reviewState.totalActive,
+      totalCompleted: reviewState.totalCompleted,
+    });
+  } catch (error) {
+    if (error instanceof ReviewStorageError) {
+      writeJson(response, 500, createJsonError(error.code, error.message, error.details));
+      return;
+    }
+
+    writeJson(response, 500, createJsonError('INTERNAL_ERROR', error.message || 'Internal server error.'));
+  }
+}
+
+function handleReviewActionRequest(response, pathname, options = {}) {
+  try {
+    const actionMatch = parseReviewActionPath(pathname);
+
+    if (!actionMatch) {
+      writeJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found' } });
+      return;
+    }
+
+    const reviewState = loadScheduledReviewState(options);
+    const itemIndex = findReviewItemIndex(reviewState.items, actionMatch.itemId);
+
+    if (itemIndex === -1) {
+      throw new ReviewSessionError('Review item not found.', 'REVIEW_ITEM_NOT_FOUND', {
+        id: actionMatch.itemId,
+      });
+    }
+
+    const today = getRequestToday(options);
+    const currentItem = reviewState.items[itemIndex];
+    const updatedItem = actionMatch.action === 'pass'
+      ? advanceReviewItem(currentItem, { today })
+      : resetReviewItem(currentItem, { today });
+    const updatedItems = reviewState.items.map((item, index) => (index === itemIndex ? updatedItem : item));
+
+    saveReviewItems(options.env, updatedItems);
+    writeJson(response, 200, {
+      item: updatedItem,
+      message: actionMatch.action === 'pass' ? 'Review item advanced.' : 'Review item reset.',
+    });
+  } catch (error) {
+    if (error instanceof ReviewSessionError) {
+      writeJson(response, error.code === 'REVIEW_ITEM_NOT_FOUND' ? 404 : 400, createJsonError(
+        error.code,
+        error.message,
+        error.details
+      ));
       return;
     }
 
@@ -187,6 +304,16 @@ function createDashboardRequestHandler(options = {}) {
 
       if (pathname === '/api/review' && method === 'POST') {
         await handleCreateReviewRequest(request, response, options);
+        return;
+      }
+
+      if (pathname === '/api/review' && method === 'GET') {
+        handleGetReviewRequest(response, options);
+        return;
+      }
+
+      if (method === 'POST' && parseReviewActionPath(pathname)) {
+        handleReviewActionRequest(response, pathname, options);
         return;
       }
 

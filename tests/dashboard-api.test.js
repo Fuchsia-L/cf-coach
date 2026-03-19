@@ -191,6 +191,27 @@ function createFixtureHome(options = {}) {
   };
 }
 
+function createTimestamp(offsetMinutes) {
+  return new Date(Date.parse('2026-03-01T00:00:00.000Z') + (offsetMinutes * 60 * 1000)).toISOString();
+}
+
+function createStoredReviewItem(overrides = {}) {
+  return {
+    id: 'r_default',
+    type: 'A',
+    content: 'review item',
+    stage: 0,
+    nextReviewDate: '2026-03-19',
+    completed: false,
+    createdAt: createTimestamp(0),
+    ...overrides,
+  };
+}
+
+function getReviewFilePath(homeDir) {
+  return path.join(homeDir, '.cf-coach', 'review.json');
+}
+
 async function withServer(options, callback) {
   const serverOptions = options && options.env ? options : { env: options };
   const serverRef = createDashboardServer(serverOptions);
@@ -507,6 +528,204 @@ test('POST /api/review rejects unknown types, empty fields, and mismatched fixed
     );
 
     assert.deepEqual(savedItems, []);
+  });
+});
+
+test('GET /api/review returns the oldest ten due items and persists overdue self-heal plus backlog deferral', async () => {
+  const fixture = createFixtureHome();
+  const reviewItems = [
+    createStoredReviewItem({
+      id: 'r_overdue_1',
+      content: 'overdue oldest',
+      nextReviewDate: '2026-03-17',
+      createdAt: createTimestamp(0),
+    }),
+    createStoredReviewItem({
+      id: 'r_overdue_2',
+      content: 'overdue second',
+      nextReviewDate: '2026-03-18',
+      createdAt: createTimestamp(1),
+    }),
+    ...Array.from({ length: 10 }, (_, index) => createStoredReviewItem({
+      id: `r_due_${index + 1}`,
+      content: `due ${index + 1}`,
+      nextReviewDate: '2026-03-19',
+      createdAt: createTimestamp(index + 2),
+    })),
+    ...Array.from({ length: 9 }, (_, index) => createStoredReviewItem({
+      id: `r_tomorrow_${index + 1}`,
+      content: `tomorrow ${index + 1}`,
+      nextReviewDate: '2026-03-20',
+      createdAt: createTimestamp(index + 20),
+    })),
+    createStoredReviewItem({
+      id: 'r_completed',
+      content: 'done',
+      stage: 4,
+      nextReviewDate: '2026-03-19',
+      completed: true,
+      createdAt: createTimestamp(40),
+    }),
+  ];
+
+  writeJson(getReviewFilePath(fixture.homeDir), reviewItems);
+
+  await withServer({ env: fixture.env, now: '2026-03-19T09:00:00.000Z' }, async (port) => {
+    const response = await request(port, '/api/review');
+    const payload = JSON.parse(response.body);
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(payload.items.length, 10);
+    assert.deepEqual(payload.items.map((item) => item.id), [
+      'r_overdue_1',
+      'r_overdue_2',
+      'r_due_1',
+      'r_due_2',
+      'r_due_3',
+      'r_due_4',
+      'r_due_5',
+      'r_due_6',
+      'r_due_7',
+      'r_due_8',
+    ]);
+    assert.equal(payload.todayCount, 12);
+    assert.equal(payload.totalActive, 21);
+    assert.equal(payload.totalCompleted, 1);
+
+    const savedItems = JSON.parse(fs.readFileSync(getReviewFilePath(fixture.homeDir), 'utf8'));
+    const savedItemsById = new Map(savedItems.map((item) => [item.id, item]));
+
+    assert.equal(savedItemsById.get('r_overdue_1').nextReviewDate, '2026-03-19');
+    assert.equal(savedItemsById.get('r_overdue_2').nextReviewDate, '2026-03-19');
+    assert.equal(savedItemsById.get('r_due_9').nextReviewDate, '2026-03-20');
+    assert.equal(savedItemsById.get('r_due_10').nextReviewDate, '2026-03-20');
+    assert.equal(savedItemsById.get('r_tomorrow_1').nextReviewDate, '2026-03-20');
+    assert.equal(savedItemsById.get('r_tomorrow_8').nextReviewDate, '2026-03-20');
+    assert.equal(savedItemsById.get('r_tomorrow_9').nextReviewDate, '2026-03-21');
+    assert.equal(savedItemsById.get('r_completed').nextReviewDate, '2026-03-19');
+  });
+});
+
+test('POST /api/review/:id/pass advances D items, marks final stages completed, and hides completed items from review list', async () => {
+  const fixture = createFixtureHome();
+
+  writeJson(getReviewFilePath(fixture.homeDir), [
+    createStoredReviewItem({
+      id: 'r_d_stage3',
+      type: 'D',
+      content: 'interval merge pattern',
+      stage: 3,
+      nextReviewDate: '2026-03-19',
+      createdAt: createTimestamp(0),
+    }),
+    createStoredReviewItem({
+      id: 'r_a_final',
+      type: 'A',
+      content: 'lower_bound usage',
+      stage: 4,
+      nextReviewDate: '2026-03-19',
+      createdAt: createTimestamp(1),
+    }),
+  ]);
+
+  await withServer({ env: fixture.env, now: '2026-03-19T09:00:00.000Z' }, async (port) => {
+    const dResponse = await request(port, '/api/review/r_d_stage3/pass', {
+      method: 'POST',
+    });
+    const dPayload = JSON.parse(dResponse.body);
+
+    assert.equal(dResponse.statusCode, 200);
+    assert.equal(dPayload.item.stage, 4);
+    assert.equal(dPayload.item.completed, false);
+    assert.equal(dPayload.item.nextReviewDate, '2026-04-02');
+
+    const finalResponse = await request(port, '/api/review/r_a_final/pass', {
+      method: 'POST',
+    });
+    const finalPayload = JSON.parse(finalResponse.body);
+
+    assert.equal(finalResponse.statusCode, 200);
+    assert.equal(finalPayload.item.stage, 4);
+    assert.equal(finalPayload.item.completed, true);
+
+    const listResponse = await request(port, '/api/review');
+    const listPayload = JSON.parse(listResponse.body);
+
+    assert.equal(listResponse.statusCode, 200);
+    assert.deepEqual(listPayload.items, []);
+    assert.equal(listPayload.todayCount, 0);
+    assert.equal(listPayload.totalActive, 1);
+    assert.equal(listPayload.totalCompleted, 1);
+
+    const savedItems = JSON.parse(fs.readFileSync(getReviewFilePath(fixture.homeDir), 'utf8'));
+    const savedItemsById = new Map(savedItems.map((item) => [item.id, item]));
+
+    assert.equal(savedItemsById.get('r_d_stage3').stage, 4);
+    assert.equal(savedItemsById.get('r_d_stage3').nextReviewDate, '2026-04-02');
+    assert.equal(savedItemsById.get('r_a_final').completed, true);
+  });
+});
+
+test('POST /api/review/:id/reset returns items to tomorrow and next review fetch reapplies backlog limits', async () => {
+  const fixture = createFixtureHome();
+  let currentNow = '2026-03-19T09:00:00.000Z';
+
+  writeJson(getReviewFilePath(fixture.homeDir), [
+    ...Array.from({ length: 10 }, (_, index) => createStoredReviewItem({
+      id: `r_tomorrow_due_${index + 1}`,
+      content: `tomorrow due ${index + 1}`,
+      nextReviewDate: '2026-03-20',
+      createdAt: createTimestamp(index),
+    })),
+    createStoredReviewItem({
+      id: 'r_reset_target',
+      type: 'C',
+      content: 'avoid off-by-one',
+      stage: 2,
+      nextReviewDate: '2026-03-19',
+      createdAt: createTimestamp(30),
+    }),
+  ]);
+
+  await withServer({ env: fixture.env, now: () => currentNow }, async (port) => {
+    const resetResponse = await request(port, '/api/review/r_reset_target/reset', {
+      method: 'POST',
+    });
+    const resetPayload = JSON.parse(resetResponse.body);
+
+    assert.equal(resetResponse.statusCode, 200);
+    assert.equal(resetPayload.item.stage, 0);
+    assert.equal(resetPayload.item.completed, false);
+    assert.equal(resetPayload.item.nextReviewDate, '2026-03-20');
+
+    currentNow = '2026-03-20T09:00:00.000Z';
+
+    const listResponse = await request(port, '/api/review');
+    const listPayload = JSON.parse(listResponse.body);
+
+    assert.equal(listResponse.statusCode, 200);
+    assert.equal(listPayload.items.length, 10);
+    assert.deepEqual(listPayload.items.map((item) => item.id), [
+      'r_tomorrow_due_1',
+      'r_tomorrow_due_2',
+      'r_tomorrow_due_3',
+      'r_tomorrow_due_4',
+      'r_tomorrow_due_5',
+      'r_tomorrow_due_6',
+      'r_tomorrow_due_7',
+      'r_tomorrow_due_8',
+      'r_tomorrow_due_9',
+      'r_tomorrow_due_10',
+    ]);
+    assert.equal(listPayload.todayCount, 11);
+    assert.equal(listPayload.totalActive, 11);
+    assert.equal(listPayload.totalCompleted, 0);
+
+    const savedItems = JSON.parse(fs.readFileSync(getReviewFilePath(fixture.homeDir), 'utf8'));
+    const savedItemsById = new Map(savedItems.map((item) => [item.id, item]));
+
+    assert.equal(savedItemsById.get('r_reset_target').stage, 0);
+    assert.equal(savedItemsById.get('r_reset_target').nextReviewDate, '2026-03-21');
   });
 });
 
