@@ -292,6 +292,131 @@ h1,
   justify-content: flex-end;
 }
 
+.review-session-summary {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.review-session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.review-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(138, 125, 179, 0.2);
+  border-radius: 999px;
+  background: rgba(36, 34, 48, 0.78);
+  color: var(--muted);
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.review-rules {
+  margin: 0;
+  padding: 16px 18px 16px 34px;
+  border: 1px solid rgba(138, 125, 179, 0.18);
+  border-radius: 18px;
+  background: rgba(23, 22, 32, 0.82);
+  color: var(--muted);
+  display: grid;
+  gap: 10px;
+}
+
+.review-session-list {
+  display: grid;
+  gap: 14px;
+}
+
+.review-item-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(138, 125, 179, 0.16);
+  border-radius: 20px;
+  background: rgba(20, 19, 29, 0.9);
+}
+
+.review-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-item-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.review-type-pill,
+.review-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.review-type-pill {
+  background: rgba(138, 125, 179, 0.18);
+  color: var(--text);
+}
+
+.review-stage-pill {
+  background: rgba(76, 172, 255, 0.14);
+  color: #9dd1ff;
+}
+
+.review-item-date {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.review-item-content {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.review-item-semantic {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.review-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.review-action-button {
+  min-width: 100px;
+}
+
+.review-action-pass {
+  border-color: rgba(86, 211, 100, 0.34);
+  color: #9ef0ab;
+}
+
+.review-action-reset {
+  border-color: rgba(255, 123, 114, 0.34);
+  color: #ffb2ab;
+}
+
+.review-action-button:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
 .panel-loading,
 .panel-error {
   max-width: 720px;
@@ -766,6 +891,12 @@ h1,
   .review-type-switcher,
   .roadmap-grid {
     grid-template-columns: 1fr;
+  }
+
+  .review-item-header,
+  .review-item-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .bucket-row {

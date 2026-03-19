@@ -1,4 +1,7 @@
 const http = require('http');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('vm');
@@ -28,6 +31,110 @@ function request(port, requestPath) {
     req.on('error', reject);
     req.end();
   });
+}
+
+function requestWithBody(port, requestPath, options = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      host: '127.0.0.1',
+      port,
+      path: requestPath,
+      method: options.method || 'GET',
+      headers: options.headers || {},
+    }, (res) => {
+      const chunks = [];
+
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        resolve({
+          statusCode: res.statusCode,
+          headers: res.headers,
+          body: Buffer.concat(chunks).toString('utf8'),
+        });
+      });
+    });
+
+    req.on('error', reject);
+
+    if (options.body) {
+      req.write(options.body);
+    }
+
+    req.end();
+  });
+}
+
+function writeJson(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function createBrowserFixtureHome() {
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-coach-browser-'));
+  return {
+    homeDir,
+    env: {
+      ...process.env,
+      CF_COACH_HOME: homeDir,
+    },
+  };
+}
+
+function getReviewFilePath(homeDir) {
+  return path.join(homeDir, '.cf-coach', 'review.json');
+}
+
+function createStoredReviewItem(overrides = {}) {
+  return {
+    id: 'r_default',
+    type: 'A',
+    content: 'review item',
+    stage: 0,
+    nextReviewDate: '2026-03-20',
+    completed: false,
+    createdAt: '2026-03-19T08:00:00.000Z',
+    ...overrides,
+  };
+}
+
+async function loadDashboardInVm(port, scriptBody) {
+  const root = {
+    attributes: {},
+    innerHTML: '',
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return this.attributes[name] || null;
+    },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const context = {
+    console,
+    Intl,
+    Promise,
+    setTimeout,
+    clearTimeout,
+    document: {
+      getElementById(id) {
+        return id === 'app' ? root : null;
+      },
+    },
+    fetch(requestPath, options) {
+      return fetch(`http://127.0.0.1:${port}${requestPath}`, options);
+    },
+  };
+
+  context.globalThis = context;
+
+  vm.runInNewContext(scriptBody, context, { filename: 'dashboard.js' });
+  await context.CFCoachDashboard.ready;
+
+  return {
+    root,
+    context,
+  };
 }
 
 function createSmokeDataLayer() {
@@ -143,7 +250,14 @@ function createSmokeDataLayer() {
 }
 
 test('dashboard browser smoke test loads the page and renders all core panels from API fixtures', async () => {
-  const serverRef = createDashboardServer({ dataLayer: createSmokeDataLayer() });
+  const fixture = createBrowserFixtureHome();
+  writeJson(getReviewFilePath(fixture.homeDir), []);
+
+  const serverRef = createDashboardServer({
+    dataLayer: createSmokeDataLayer(),
+    env: fixture.env,
+    now: '2026-03-19T09:00:00.000Z',
+  });
   const port = await serverRef.listen(0);
 
   try {
@@ -233,6 +347,80 @@ test('dashboard browser smoke test loads the page and renders all core panels fr
     assert.match(root.innerHTML, /Stage 1/);
     assert.match(root.innerHTML, /Stage 5/);
     assert.doesNotMatch(root.innerHTML, /Stage 20/);
+  } finally {
+    await serverRef.close();
+  }
+});
+
+test('dashboard browser smoke test covers create, due review actions, and refresh across days', async () => {
+  const fixture = createBrowserFixtureHome();
+  let currentNow = '2026-03-19T09:00:00.000Z';
+
+  writeJson(getReviewFilePath(fixture.homeDir), [
+    createStoredReviewItem({
+      id: 'r_final_due',
+      type: 'A',
+      content: 'final syntax review',
+      stage: 4,
+      nextReviewDate: '2026-03-20',
+      createdAt: '2026-03-18T08:00:00.000Z',
+    }),
+  ]);
+
+  const serverRef = createDashboardServer({
+    dataLayer: createSmokeDataLayer(),
+    env: fixture.env,
+    now: () => currentNow,
+  });
+  const port = await serverRef.listen(0);
+
+  try {
+    const scriptResponse = await request(port, '/assets/dashboard.js');
+    assert.equal(scriptResponse.statusCode, 200);
+
+    const dayOne = await loadDashboardInVm(port, scriptResponse.body);
+    assert.match(dayOne.root.innerHTML, /data-panel="review-session"/);
+    assert.match(dayOne.root.innerHTML, /No review items are due right now/);
+
+    dayOne.context.CFCoachDashboard.controller.setReviewType('D');
+    dayOne.context.CFCoachDashboard.controller.updateReviewField('problemType', 'Interval merge');
+    dayOne.context.CFCoachDashboard.controller.updateReviewField('snippet', 'Sort by left endpoint, then merge overlaps.');
+
+    const createResult = await dayOne.context.CFCoachDashboard.controller.submitReview();
+
+    assert.equal(createResult.ok, true);
+    assert.match(dayOne.root.innerHTML, /Created review item for 2026-03-20/);
+
+    currentNow = '2026-03-20T09:00:00.000Z';
+    const dayTwo = await loadDashboardInVm(port, scriptResponse.body);
+
+    assert.match(dayTwo.root.innerHTML, /final syntax review/);
+    assert.match(dayTwo.root.innerHTML, /Interval merge/);
+    assert.match(dayTwo.root.innerHTML, /data-review-action="pass"/);
+    assert.match(dayTwo.root.innerHTML, /data-review-action="reset"/);
+
+    const passResult = await dayTwo.context.CFCoachDashboard.controller.submitReviewAction('r_final_due', 'pass');
+    const resetResult = await dayTwo.context.CFCoachDashboard.controller.submitReviewAction(createResult.item.id, 'reset');
+
+    assert.equal(passResult.ok, true);
+    assert.equal(resetResult.ok, true);
+    assert.doesNotMatch(dayTwo.root.innerHTML, /final syntax review/);
+    assert.doesNotMatch(dayTwo.root.innerHTML, /Interval merge/);
+    assert.match(dayTwo.root.innerHTML, /No review items are due right now/);
+
+    currentNow = '2026-03-21T09:00:00.000Z';
+    const dayThree = await loadDashboardInVm(port, scriptResponse.body);
+
+    assert.doesNotMatch(dayThree.root.innerHTML, /final syntax review/);
+    assert.match(dayThree.root.innerHTML, /Interval merge/);
+    assert.match(dayThree.root.innerHTML, /Stage 0/);
+
+    const reviewResponse = await requestWithBody(port, '/api/review');
+    const payload = JSON.parse(reviewResponse.body);
+
+    assert.equal(reviewResponse.statusCode, 200);
+    assert.equal(payload.items.length, 1);
+    assert.equal(payload.items[0].id, createResult.item.id);
   } finally {
     await serverRef.close();
   }

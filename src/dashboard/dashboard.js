@@ -10,7 +10,16 @@
     weak: '/api/weak',
     next: '/api/next',
     submissions: '/api/submissions',
+    review: '/api/review',
   };
+
+  const REVIEW_STAGE_GAPS = {
+    A: [1, 3, 7, 21],
+    B: [1, 3, 7, 21],
+    C: [1, 3, 7, 21],
+    D: [1, 3, 7, 14, 21],
+  };
+  const REVIEW_PANEL_MAX_ITEMS = 10;
 
   const REVIEW_TYPE_ORDER = ['A', 'B', 'C', 'D'];
   const REVIEW_TYPE_DEFINITIONS = {
@@ -81,6 +90,7 @@
   };
 
   const DASHBOARD_SECTION_IDS = [
+    'review-session',
     'review-entry',
     'rating-trend',
     'roadmap',
@@ -156,7 +166,23 @@
       expandedTagAbility: initialState.expandedTagAbility === true,
       tooltip: normalizeTooltipState(initialState.tooltip),
       profilePinned: initialState.profilePinned === true,
+      reviewSession: createReviewSessionState(initialState.reviewSession),
       reviewComposer: createReviewComposerState(initialState.reviewComposer),
+    };
+  }
+
+  function createReviewSessionState(initialState = {}) {
+    return {
+      pendingItemId: initialState.pendingItemId ? String(initialState.pendingItemId) : null,
+      pendingAction: initialState.pendingAction === 'pass' || initialState.pendingAction === 'reset'
+        ? initialState.pendingAction
+        : null,
+      feedback: {
+        kind: initialState.feedback?.kind === 'success' || initialState.feedback?.kind === 'error'
+          ? initialState.feedback.kind
+          : 'idle',
+        message: initialState.feedback?.message ? String(initialState.feedback.message) : '',
+      },
     };
   }
 
@@ -200,6 +226,44 @@
         message: initialState.feedback?.message ? String(initialState.feedback.message) : '',
       },
     };
+  }
+
+  function setReviewSessionPending(uiState, itemId, action) {
+    const currentState = createDashboardUiState(uiState);
+
+    return {
+      ...currentState,
+      reviewSession: {
+        ...currentState.reviewSession,
+        pendingItemId: itemId ? String(itemId) : null,
+        pendingAction: action === 'pass' || action === 'reset' ? action : null,
+        feedback: {
+          kind: 'idle',
+          message: '',
+        },
+      },
+    };
+  }
+
+  function setReviewSessionFeedback(uiState, kind, message) {
+    const currentState = createDashboardUiState(uiState);
+
+    return {
+      ...currentState,
+      reviewSession: {
+        ...currentState.reviewSession,
+        pendingItemId: null,
+        pendingAction: null,
+        feedback: {
+          kind,
+          message: String(message || ''),
+        },
+      },
+    };
+  }
+
+  function clearReviewSessionFeedback(uiState) {
+    return setReviewSessionFeedback(uiState, 'idle', '');
   }
 
   function setReviewComposerType(uiState, type) {
@@ -314,6 +378,100 @@
     }
 
     return payload;
+  }
+
+  function normalizeReviewPayload(reviewPayload) {
+    const items = Array.isArray(reviewPayload?.items) ? reviewPayload.items : [];
+    const todayCount = Number(reviewPayload?.todayCount);
+    const totalActive = Number(reviewPayload?.totalActive);
+    const totalCompleted = Number(reviewPayload?.totalCompleted);
+
+    return {
+      items,
+      todayCount: Number.isFinite(todayCount) ? todayCount : items.length,
+      totalActive: Number.isFinite(totalActive) ? totalActive : items.length,
+      totalCompleted: Number.isFinite(totalCompleted) ? totalCompleted : 0,
+    };
+  }
+
+  function getReviewStageGaps(type) {
+    return REVIEW_STAGE_GAPS[type] ? [...REVIEW_STAGE_GAPS[type]] : [...REVIEW_STAGE_GAPS.A];
+  }
+
+  function formatDayCount(days) {
+    return `${days} day${days === 1 ? '' : 's'}`;
+  }
+
+  function getReviewPassSummary(item) {
+    const gaps = getReviewStageGaps(item?.type);
+    const stage = Number(item?.stage);
+
+    if (!Number.isInteger(stage) || stage < 0) {
+      return 'Pass follows the next scheduled interval.';
+    }
+
+    if (stage >= gaps.length) {
+      return 'Pass completes this item.';
+    }
+
+    return `Pass schedules the next review in ${formatDayCount(gaps[stage])}.`;
+  }
+
+  function getReviewTypeLabel(type) {
+    return getReviewTypeDefinition(type).label;
+  }
+
+  function updateReviewDataAfterCreate(data, item) {
+    if (!data?.review || data.review.state !== 'ready' || !item) {
+      return data;
+    }
+
+    const payload = normalizeReviewPayload(data.review.payload);
+
+    return {
+      ...data,
+      review: {
+        ...data.review,
+        payload: {
+          ...payload,
+          totalActive: payload.totalActive + (item.completed ? 0 : 1),
+        },
+      },
+    };
+  }
+
+  function updateReviewDataAfterAction(data, itemId, updatedItem) {
+    if (!data?.review || data.review.state !== 'ready' || !itemId) {
+      return data;
+    }
+
+    const payload = normalizeReviewPayload(data.review.payload);
+    const existingItem = payload.items.find((item) => item.id === itemId);
+
+    if (!existingItem) {
+      return data;
+    }
+
+    const nextPayload = {
+      ...payload,
+      items: payload.items.filter((item) => item.id !== itemId),
+      todayCount: Math.max(0, payload.todayCount - 1),
+      totalActive: payload.totalActive,
+      totalCompleted: payload.totalCompleted,
+    };
+
+    if (updatedItem?.completed) {
+      nextPayload.totalActive = Math.max(0, nextPayload.totalActive - 1);
+      nextPayload.totalCompleted += 1;
+    }
+
+    return {
+      ...data,
+      review: {
+        ...data.review,
+        payload: nextPayload,
+      },
+    };
   }
 
   function isPanelCollapsible(panelName) {
@@ -940,6 +1098,75 @@
     );
   }
 
+  function renderReviewSessionPanel(reviewPayload, uiState) {
+    const review = normalizeReviewPayload(reviewPayload);
+    const reviewSession = createReviewSessionState(uiState?.reviewSession);
+    const backlogCount = Math.max(0, review.todayCount - review.items.length);
+    const reviewSummaryMarkup = [
+      '<div class="review-session-summary">',
+      `  <p class="panel-hint">Showing today\'s due reviews from the server queue. No defer button exists here: if you leave an item untouched, it stays in rotation and can reappear on later dates under the server scheduling rules.</p>`,
+      '  <div class="review-session-meta">',
+      `    <span class="review-meta-chip">Visible today: ${escapeHtml(String(review.items.length))}</span>`,
+      `    <span class="review-meta-chip">Due before cap: ${escapeHtml(String(review.todayCount))}</span>`,
+      `    <span class="review-meta-chip">Active total: ${escapeHtml(String(review.totalActive))}</span>`,
+      '  </div>',
+      '  <ul class="review-rules">',
+      '    <li>A/B/C intervals: 1, 3, 7, 21 days.</li>',
+      '    <li>D intervals: 1, 3, 7, 14, 21 days.</li>',
+      `    <li>Daily backlog cap: the server returns at most ${escapeHtml(String(REVIEW_PANEL_MAX_ITEMS))} items and keeps the original order.</li>`,
+      backlogCount > 0
+        ? `    <li>Backlog active: showing ${escapeHtml(String(review.items.length))} of ${escapeHtml(String(review.todayCount))} due items; the remaining ${escapeHtml(String(backlogCount))} roll forward by server rules.</li>`
+        : '    <li>If you do nothing, the item is not lost; it remains governed by the next server-side schedule check.</li>',
+      '  </ul>',
+      '</div>',
+    ].join('');
+    const feedbackMarkup = reviewSession.feedback.kind !== 'idle' && reviewSession.feedback.message
+      ? `<p class="review-feedback review-feedback-${escapeHtml(reviewSession.feedback.kind)}" role="${reviewSession.feedback.kind === 'error' ? 'alert' : 'status'}">${escapeHtml(reviewSession.feedback.message)}</p>`
+      : '';
+
+    if (review.items.length === 0) {
+      return renderPanelFrame(
+        'review-session',
+        'Today Review',
+        'Up to 10 due items',
+        `${reviewSummaryMarkup}${feedbackMarkup}${renderPanelStatus('empty', 'No review items are due right now.')}`,
+        'panel-review-session'
+      );
+    }
+
+    const itemsMarkup = review.items.map((item) => {
+      const pending = reviewSession.pendingItemId === item.id;
+      const passLabel = pending && reviewSession.pendingAction === 'pass' ? 'Passing...' : 'Pass';
+      const resetLabel = pending && reviewSession.pendingAction === 'reset' ? 'Resetting...' : 'Reset';
+
+      return [
+        `<article class="review-item-card" data-review-item="${escapeHtml(item.id)}">`,
+        '  <div class="review-item-header">',
+        '    <div class="review-item-badges">',
+        `      <span class="review-type-pill">${escapeHtml(item.type)} · ${escapeHtml(getReviewTypeLabel(item.type))}</span>`,
+        `      <span class="review-stage-pill">Stage ${escapeHtml(String(item.stage))}</span>`,
+        '    </div>',
+        `    <p class="review-item-date">Due ${escapeHtml(item.nextReviewDate || 'today')}</p>`,
+        '  </div>',
+        `  <p class="review-item-content">${escapeHtml(item.content || '')}</p>`,
+        `  <p class="review-item-semantic">${escapeHtml(getReviewPassSummary(item))} Reset sends it back to stage 0 for tomorrow.</p>`,
+        '  <div class="review-item-actions">',
+        `    <button class="panel-toggle review-action-button review-action-pass" type="button" data-review-item-id="${escapeHtml(item.id)}" data-review-action="pass"${pending ? ' disabled' : ''}>${escapeHtml(passLabel)}</button>`,
+        `    <button class="panel-toggle review-action-button review-action-reset" type="button" data-review-item-id="${escapeHtml(item.id)}" data-review-action="reset"${pending ? ' disabled' : ''}>${escapeHtml(resetLabel)}</button>`,
+        '  </div>',
+        '</article>',
+      ].join('');
+    }).join('');
+
+    return renderPanelFrame(
+      'review-session',
+      'Today Review',
+      'Up to 10 due items',
+      `${reviewSummaryMarkup}${feedbackMarkup}<div class="review-session-list">${itemsMarkup}</div>`,
+      'panel-review-session'
+    );
+  }
+
   function renderProfileBar(profile, uiState) {
     const ratingColor = getCodeforcesRatingColor(profile?.rating);
 
@@ -1463,6 +1690,17 @@
       }),
     ].join('');
     const secondaryColumnPanels = [
+      renderPanelResource(data.review, {
+        panelName: 'review-session',
+        title: 'Today Review',
+        subtitle: 'Up to 10 due items',
+        className: 'panel-review-session',
+        loadingMessage: 'Loading today\'s review queue...',
+        errorMessage: 'Today\'s review queue is unavailable.',
+        renderer(review) {
+          return renderReviewSessionPanel(review, normalizedUiState);
+        },
+      }),
       renderReviewComposerPanel(normalizedUiState),
       renderPanelResource(data.roadmap, {
         panelName: 'roadmap',
@@ -1648,6 +1886,51 @@
       return render();
     }
 
+    async function submitReviewAction(itemId, action) {
+      if (!itemId) {
+        return { ok: false, error: new Error('Review item id is required.') };
+      }
+
+      if (action !== 'pass' && action !== 'reset') {
+        return { ok: false, error: new Error('Review action must be pass or reset.') };
+      }
+
+      if (!env || typeof env.fetch !== 'function') {
+        const error = new Error('Review actions are unavailable because fetch is missing.');
+        controllerState.uiState = setReviewSessionFeedback(controllerState.uiState, 'error', error.message);
+        render();
+        return { ok: false, error };
+      }
+
+      controllerState.uiState = setReviewSessionPending(controllerState.uiState, itemId, action);
+      render();
+
+      try {
+        const response = await env.fetch(`/api/review/${encodeURIComponent(itemId)}/${action}`, {
+          method: 'POST',
+        });
+        const result = await readJsonResponse(response, `/api/review/${itemId}/${action}`);
+
+        controllerState.data = updateReviewDataAfterAction(controllerState.data, itemId, result?.item);
+        controllerState.uiState = setReviewSessionFeedback(
+          controllerState.uiState,
+          'success',
+          result?.message || (action === 'pass' ? 'Review item advanced.' : 'Review item reset.')
+        );
+        render();
+
+        return {
+          ok: true,
+          item: result?.item || null,
+          payload: result,
+        };
+      } catch (error) {
+        controllerState.uiState = setReviewSessionFeedback(controllerState.uiState, 'error', error.message);
+        render();
+        return { ok: false, error };
+      }
+    }
+
     async function submitReview() {
       if (!env || typeof env.fetch !== 'function') {
         controllerState.uiState = setReviewComposerFeedback(
@@ -1688,6 +1971,7 @@
           'success',
           `Created review item for ${result?.item?.nextReviewDate || 'tomorrow'}.`
         );
+        controllerState.data = updateReviewDataAfterCreate(controllerState.data, result?.item);
         render();
 
         return {
@@ -1716,6 +2000,16 @@
 
         if (reviewTypeButton && typeof reviewTypeButton.getAttribute === 'function') {
           setReviewType(reviewTypeButton.getAttribute('data-review-type'));
+          return;
+        }
+
+        const reviewActionButton = findClosestAttributeTarget(event.target, 'data-review-action');
+
+        if (reviewActionButton && typeof reviewActionButton.getAttribute === 'function') {
+          submitReviewAction(
+            reviewActionButton.getAttribute('data-review-item-id'),
+            reviewActionButton.getAttribute('data-review-action')
+          ).catch(() => null);
           return;
         }
 
@@ -1860,6 +2154,7 @@
       getState,
       hideTooltip,
       render,
+      submitReviewAction,
       setData,
       setProfilePinned,
       setReviewType,
@@ -1976,6 +2271,7 @@
     buildTooltipContent,
     buildChartAreaPath,
     clearTooltipState,
+    clearReviewSessionFeedback,
     createDashboardController,
     createReviewComposerState,
     createDashboardUiState,
@@ -2012,6 +2308,7 @@
     renderRatingBucketPanel,
     renderRatingTrendPanel,
     renderReviewComposerPanel,
+    renderReviewSessionPanel,
     renderRoadmapPanel,
     renderSubmissionTimelinePanel,
     renderTagAbilityPanel,
@@ -2022,6 +2319,8 @@
     setReviewComposerFeedback,
     setReviewComposerSubmitting,
     setReviewComposerType,
+    setReviewSessionFeedback,
+    setReviewSessionPending,
     setProfilePinnedState,
     setTooltipState,
     sortTagStats,

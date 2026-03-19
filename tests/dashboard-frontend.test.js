@@ -31,6 +31,7 @@ const {
   renderRatingBucketPanel,
   renderRatingTrendPanel,
   renderReviewComposerPanel,
+  renderReviewSessionPanel,
   renderRoadmapPanel,
   renderSubmissionTimelinePanel,
   renderTagAbilityPanel,
@@ -38,6 +39,7 @@ const {
   renderTooltipLayer,
   renderWeakAnalysisPanel,
   setReviewComposerType,
+  setReviewSessionFeedback,
   sortTagStats,
   toggleRoadmapExpanded,
   toggleTagAbilityExpanded,
@@ -137,6 +139,75 @@ function createDashboardFixture() {
           { timestamp: 1000, rating: 800, verdict: 'WRONG_ANSWER', problemId: '100A', title: 'Sort Warmup', tags: ['sortings'] },
         ],
       },
+    },
+    review: {
+      state: 'ready',
+      payload: {
+        items: [
+          {
+            id: 'r_demo_1',
+            type: 'A',
+            content: 'lower_bound — returns first iterator >= value',
+            stage: 0,
+            nextReviewDate: '2026-03-20',
+            completed: false,
+            createdAt: '2026-03-19T10:00:00.000Z',
+          },
+        ],
+        todayCount: 1,
+        totalActive: 1,
+        totalCompleted: 0,
+      },
+    },
+  };
+}
+
+function createInteractiveRoot() {
+  const listeners = new Map();
+
+  return {
+    innerHTML: '',
+    attributes: {},
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return this.attributes[name] || null;
+    },
+    addEventListener(type, listener) {
+      listeners.set(type, listener);
+    },
+    removeEventListener(type) {
+      listeners.delete(type);
+    },
+    dispatch(type, target) {
+      const listener = listeners.get(type);
+
+      if (!listener) {
+        return;
+      }
+
+      listener({
+        target,
+        preventDefault() {},
+      });
+    },
+  };
+}
+
+function createAttributeTarget(attributes) {
+  return {
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(attributes, name) ? attributes[name] : null;
+    },
+    closest(selector) {
+      const match = /^\[(.+)\]$/.exec(selector);
+
+      if (!match) {
+        return null;
+      }
+
+      return this.getAttribute(match[1]) != null ? this : null;
     },
   };
 }
@@ -337,6 +408,140 @@ test('review composer submits successfully and surfaces server errors without a 
   assert.equal(controller.getState().reviewComposer.feedback.kind, 'error');
   assert.equal(controller.getState().reviewComposer.feedback.message, 'Snippet is required.');
   assert.match(root.innerHTML, /Snippet is required/);
+});
+
+test('review session panel renders due items, interval guidance, backlog cap, and no-defer messaging', () => {
+  const reviewPanel = renderReviewSessionPanel({
+    items: Array.from({ length: 10 }, (_, index) => ({
+      id: `r_${index + 1}`,
+      type: index === 9 ? 'D' : 'A',
+      content: `review ${index + 1}`,
+      stage: index === 9 ? 4 : 0,
+      nextReviewDate: '2026-03-20',
+      completed: false,
+      createdAt: `2026-03-19T10:${String(index).padStart(2, '0')}:00.000Z`,
+    })),
+    todayCount: 12,
+    totalActive: 15,
+    totalCompleted: 3,
+  }, createDashboardUiState({
+    reviewSession: setReviewSessionFeedback(createDashboardUiState(), 'success', 'Review item advanced.').reviewSession,
+  }));
+
+  assert.match(reviewPanel, /data-panel="review-session"/);
+  assert.match(reviewPanel, /No defer button exists here/);
+  assert.match(reviewPanel, /A\/B\/C intervals: 1, 3, 7, 21 days/);
+  assert.match(reviewPanel, /D intervals: 1, 3, 7, 14, 21 days/);
+  assert.match(reviewPanel, /server returns at most 10 items/);
+  assert.match(reviewPanel, /showing 10 of 12 due items/i);
+  assert.match(reviewPanel, /A · Syntax/);
+  assert.match(reviewPanel, /D · Knowledge/);
+  assert.match(reviewPanel, /Stage 0/);
+  assert.match(reviewPanel, /Pass schedules the next review in 1 day/);
+  assert.match(reviewPanel, /Reset sends it back to stage 0 for tomorrow/);
+  assert.match(reviewPanel, /Review item advanced/);
+  assert.equal(countMatches(reviewPanel, /data-review-action="pass"/g), 10);
+  assert.equal(countMatches(reviewPanel, /data-review-action="reset"/g), 10);
+});
+
+test('review session interactions remove items immediately and use delegated click handling', async () => {
+  const root = createInteractiveRoot();
+  const fetchCalls = [];
+  const env = {
+    async fetch(requestPath, options) {
+      fetchCalls.push({ requestPath, options });
+
+      return {
+        ok: true,
+        async text() {
+          if (requestPath.includes('/pass')) {
+            return JSON.stringify({
+              item: {
+                id: 'r_pass',
+                type: 'A',
+                content: 'lower_bound',
+                stage: 5,
+                nextReviewDate: '2026-03-20',
+                completed: true,
+                createdAt: '2026-03-19T10:00:00.000Z',
+              },
+              message: 'Review item advanced.',
+            });
+          }
+
+          return JSON.stringify({
+            item: {
+              id: 'r_reset',
+              type: 'D',
+              content: 'interval merge',
+              stage: 0,
+              nextReviewDate: '2026-03-21',
+              completed: false,
+              createdAt: '2026-03-19T10:05:00.000Z',
+            },
+            message: 'Review item reset.',
+          });
+        },
+      };
+    },
+  };
+  const controller = createDashboardController(env, root, {
+    data: {
+      ...createDashboardFixture(),
+      review: {
+        state: 'ready',
+        payload: {
+          items: [
+            {
+              id: 'r_pass',
+              type: 'A',
+              content: 'lower_bound',
+              stage: 4,
+              nextReviewDate: '2026-03-20',
+              completed: false,
+              createdAt: '2026-03-19T10:00:00.000Z',
+            },
+            {
+              id: 'r_reset',
+              type: 'D',
+              content: 'interval merge',
+              stage: 2,
+              nextReviewDate: '2026-03-20',
+              completed: false,
+              createdAt: '2026-03-19T10:05:00.000Z',
+            },
+          ],
+          todayCount: 2,
+          totalActive: 2,
+          totalCompleted: 0,
+        },
+      },
+    },
+  });
+
+  controller.render();
+  assert.match(root.innerHTML, /r_pass/);
+  assert.match(root.innerHTML, /r_reset/);
+
+  root.dispatch('click', createAttributeTarget({
+    'data-review-item-id': 'r_pass',
+    'data-review-action': 'pass',
+  }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(fetchCalls[0].requestPath, '/api/review/r_pass/pass');
+  assert.equal(fetchCalls[0].options.method, 'POST');
+  assert.doesNotMatch(root.innerHTML, /r_pass/);
+  assert.match(root.innerHTML, /Review item advanced/);
+
+  const resetResult = await controller.submitReviewAction('r_reset', 'reset');
+
+  assert.equal(resetResult.ok, true);
+  assert.equal(fetchCalls[1].requestPath, '/api/review/r_reset/reset');
+  assert.equal(fetchCalls[1].options.method, 'POST');
+  assert.doesNotMatch(root.innerHTML, /r_reset/);
+  assert.match(root.innerHTML, /No review items are due right now/);
+  assert.match(root.innerHTML, /Review item reset/);
 });
 
 test('rating trend geometry uses non-uniform x spacing based on timestamps', () => {
