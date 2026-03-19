@@ -1,40 +1,38 @@
 {
-  "projectName": "dashboard-polish",
-  "summary": "This work upgrades the existing cf-coach dashboard front end without touching backend APIs, data contracts, or adding dependencies. The implementation should focus on reducing wasted vertical space, making dense panels progressively disclosed, improving readability through typography and spacing, and polishing chart/hover interactions while keeping the current dark theme and existing API-oriented tests stable.",
+  "projectName": "cf-coach-review-system",
+  "summary": "在现有 Node.js Dashboard/CLI 架构上新增一个本地 JSON 驱动的间隔复习子系统：先定义稳定的 review 条目存储与校验边界，再实现纯调度引擎来处理 A/B/C 与 D 类型的不同 stage 间隔、重置、逾期自愈与每日最多 10 条的积压控制，随后分别接入 Dashboard 创建入口和复习 API，最后把创建表单与复习面板整合到前端。这样的拆分既满足可独立测试，也修复了上一版中不必要的串行依赖，并把“不操作次日继续出现”的核心行为前移到调度/读取层。",
   "phases": [
     {
       "id": 1,
-      "name": "UI foundation and safe refactor hooks",
-      "description": "Prepare `src/dashboard/dashboard.js` and `src/dashboard/dashboard.css` for interactive polish by introducing front-end-only state hooks and stable DOM markers needed for collapsible sections, sticky profile behavior, and custom tooltips, while preserving all existing API fetch flows and payload expectations.",
+      "name": "Review storage and schema",
+      "description": "建立 `~/.cf-coach/review.json` 的读写层、模式校验与默认初始化，明确 review 条目的单一数据模型，包括通用字段、类型约束和可选元数据字段，为后续调度与 Dashboard 交互提供稳定边界。",
       "acceptance": [
-        "Dashboard still renders all current panels from the existing API endpoints with no backend or payload changes",
-        "No new npm dependency is added and only `src/dashboard/dashboard.js` plus `src/dashboard/dashboard.css` are modified",
-        "Render output keeps panel-level identifiers needed by current smoke tests such as profile, rating-trend, roadmap, tag-ability, rating-buckets, weak-analysis, next-problem, and submission-timeline",
-        "A front-end mechanism exists to support local UI state for expand/collapse and tooltip visibility without requiring page reloads"
+        "存在统一的 review 条目 schema，明确列出 `id`、`type`、`content`、`stage`、`nextReviewDate`、`completed`、`createdAt`，以及允许的可选元数据字段（如来源题目或备注）。",
+        "读写层能在文件缺失时初始化为空数组，在文件损坏或条目字段非法时返回可处理的错误，而不是静默写入坏数据。",
+        "`type` 仅允许 `A`/`B`/`C`/`D`，`completed` 为布尔值，`nextReviewDate` 为 ISO 日期字符串，`stage` 必须落在该类型允许的范围内。",
+        "存储路径遵循现有 `CF_COACH_HOME`/`~/.cf-coach` 约定，且不影响其他现有缓存文件。"
       ],
       "tests": [
-        "Keep existing dashboard smoke test passing to verify all core panels still render from fixture-backed APIs",
-        "Add or update frontend unit tests to assert new DOM hooks or data attributes for interactive panels are present without changing API contracts",
-        "Run existing API/data tests to confirm no server-side behavior regresses"
+        "为存储层编写单元测试，覆盖文件不存在时初始化、正常读写、损坏 JSON、字段缺失和非法类型。",
+        "为 schema 校验编写单元测试，覆盖 A/B/C/D 合法条目、超范围 stage、非法日期和可选元数据保留。"
       ],
       "dependsOn": []
     },
     {
       "id": 2,
-      "name": "Masonry layout and readability refresh",
-      "description": "Replace the rigid equal-height dashboard grid behavior with a masonry-style or independent-height layout so panels flow naturally and large left-side content no longer creates empty space on the right. In the same phase, increase base typography, enlarge section labels and chart labels, widen inter-panel gaps and panel padding, refine shadow/radius, add sticky profile bar behavior, and smooth hover transitions for panels and problem cards.",
+      "name": "Scheduling engine and backlog rules",
+      "description": "实现纯函数调度引擎，负责 stage 推进、重置、完成判定、逾期条目自愈、当日应复习条目选择以及超过 10 条时的顺延规则；该阶段不依赖 UI，只依赖 Phase 1 的数据模型。",
       "acceptance": [
-        "On desktop widths at and above 1024px, panels no longer force equal row heights that create large blank areas beside taller panels",
-        "Body-level typography is visibly larger than before, with panel titles at least 20px and kicker or section labels at least 13px",
-        "Chart axis labels render at 13px or larger",
-        "Panel gap is increased into the 28px to 32px range and panel inner padding is increased into the 24px to 28px range",
-        "Profile bar remains visible with sticky behavior while scrolling through the page",
-        "Panel hover and problem card hover transitions are present and visually smoother than the current abrupt state changes"
+        "推进规则使用“间隔天数”而非累计天数：A/B/C 类型从 stage 0 成功复习后分别设置为 `today+1`、`today+3`、`today+7`、`today+21`，之后完成；D 类型从 stage 0 成功复习后分别设置为 `today+1`、`today+3`、`today+7`、`today+14`、`today+21`，之后完成。",
+        "重置操作会把任意未完成条目恢复为 `stage=0`、`completed=false`、`nextReviewDate=tomorrow`。",
+        "应复习选择逻辑会把 `nextReviewDate<=today` 的条目视为到期，按 `nextReviewDate` 升序（再按稳定次序如 `createdAt`/`id` 打平）选出最旧的 10 条。",
+        "若某天到期条目超过 10 条，超出的条目会被自动顺延到后续日期，保证单日待展示条目不超过 10 条且相对先后顺序保持稳定。",
+        "逾期未处理条目在读取/计算时会被视为今天仍需复习，从而实现“用户不操作，第二天继续出现”的行为，无需显式 defer 按钮或额外定时任务。"
       ],
       "tests": [
-        "Update frontend rendering tests to assert new layout or sticky-related class names and larger typography hooks where practical",
-        "Add browser or smoke assertions that the profile panel still renders correctly after layout refactor",
-        "Keep dashboard browser smoke test passing to ensure layout changes do not break full-page rendering"
+        "为调度纯函数编写表驱动单元测试，分别覆盖 A/B/C 与 D 的每个 stage 推进、完成节点和重置行为。",
+        "编写日期测试，验证 stage 0 代表下一次复习为明天，后续 3/7/14/21 为相对今天的 gap 而非累计天数。",
+        "编写应复习选择测试，覆盖逾期条目、自愈逻辑、恰好 10 条、超过 10 条时的 oldest-first 选择与顺延结果。"
       ],
       "dependsOn": [
         1
@@ -42,64 +40,58 @@
     },
     {
       "id": 3,
-      "name": "Tag Ability progressive disclosure",
-      "description": "Change the Tag Ability panel so it shows only the top 10 tags by default and adds a dark-theme-consistent toggle control to reveal the full list and collapse it again. The feature should reduce dashboard height while preserving the same tag data source and ordering logic.",
+      "name": "Dashboard entry creation flow",
+      "description": "在 Dashboard 中增加“新增复习条目”能力，包括 API 与表单交互；用户可以按 A/B/C/D 四种类型录入固定格式内容，系统直接创建 `stage=0` 的新条目并安排第一次复习日期。此流程只依赖存储层与简单日期初始化，不依赖完整调度引擎。",
       "acceptance": [
-        "Tag Ability shows only 10 items on first render when more than 10 tags exist",
-        "A visible toggle control allows switching between collapsed and expanded states",
-        "Expanded state shows the full sorted tag list and collapsed state restores the default top-10 view",
-        "If there are 10 or fewer tags, the panel remains fully visible without a broken or misleading toggle",
-        "The toggle styling matches the existing dark theme"
+        "Dashboard 提供新增复习条目入口，允许选择 A/B/C/D 类型，并针对每种类型展示固定格式所需的输入字段。",
+        "提交创建后会生成合法条目：`stage=0`、`completed=false`、`nextReviewDate=tomorrow`、`createdAt` 为当前时间，并写入 `review.json`。",
+        "创建接口会拒绝空内容、未知类型或不符合该类型固定格式的 payload，并返回明确错误。",
+        "创建新条目后无需刷新整个应用即可在前端看到创建成功状态，并能在后续复习面板中出现。"
       ],
       "tests": [
-        "Add frontend unit tests verifying default render includes only 10 tag rows when more data exists",
-        "Add frontend unit tests verifying expanded render includes all tag rows and collapse restores 10",
-        "Retain existing tag sorting tests to confirm the progressive disclosure feature does not change ordering semantics"
+        "为创建 API 编写集成测试，覆盖四种类型的合法创建、非法 payload 拒绝和持久化结果。",
+        "为 Dashboard 创建表单编写前端测试，覆盖类型切换、字段校验、成功提交流程和错误提示。"
       ],
       "dependsOn": [
-        2
+        1
       ]
     },
     {
       "id": 4,
-      "name": "Roadmap focused-stage disclosure",
-      "description": "Refine the Roadmap panel so it shows a focused window around the current stage by default: current stage plus the previous two and next two stages, with a control to reveal all stages and collapse back. The current stage must always remain visible and state styling for completed, current, and not-started stages must remain intact.",
+      "name": "Review session API",
+      "description": "为 Dashboard 增加复习相关接口：获取今日待复习列表、执行“过”推进、执行“重置”回炉，并在读取时应用逾期自愈和积压顺延规则，使服务端成为 review 状态机的唯一执行点。",
       "acceptance": [
-        "When sufficient stages exist, default roadmap view shows exactly five stages centered on the current stage where possible",
-        "The current stage is always visible in the default collapsed state, including edge cases near the first or last stages",
-        "A toggle control switches between focused five-stage view and full roadmap view",
-        "Completed, current, and not-started visual states are preserved in both collapsed and expanded views",
-        "Full roadmap view still supports the complete 20-stage dataset without API changes"
+        "存在获取 review 面板数据的 API，返回今天应显示的最多 10 条未完成条目，结果已经应用逾期自愈与 oldest-first 排序。",
+        "读取 API 会在必要时把逾期条目和积压顺延结果写回存储，使 `review.json` 保持与当前调度规则一致，而不是每次只做临时计算。",
+        "“过”接口会调用调度引擎推进到下一 stage，并正确设置新的 `nextReviewDate`；若已完成最后一个 stage，则写入 `completed=true` 且不再进入待复习列表。",
+        "“重置”接口会把条目恢复为 `stage=0`、`nextReviewDate=tomorrow`，并在下一次获取列表时遵守同样的积压规则。",
+        "这些接口仅依赖 Phase 1 和 Phase 2，不要求创建 UI 先完成即可独立调试。"
       ],
       "tests": [
-        "Add frontend unit tests verifying default roadmap render shows a five-stage window around the current stage",
-        "Add edge-case tests for current stage near the beginning or end of the roadmap",
-        "Update existing roadmap render tests to confirm current, complete, and not-started classes still apply after introducing collapsed and expanded states"
+        "为 review API 编写集成测试，覆盖列表获取、过按钮推进、D 类型额外 14 天节点、最终完成隐藏和重置回炉。",
+        "增加持久化测试，验证读取 API 会把逾期条目自愈写回，并在超过 10 条时把超额条目顺延到后续日期。"
       ],
       "dependsOn": [
+        1,
         2
       ]
     },
     {
       "id": 5,
-      "name": "Chart interaction and tooltip polish",
-      "description": "Upgrade the charts by adding a gradient fill beneath the Rating Trend line, increasing Submission Timeline point radius and hover growth, and replacing SVG `<title>` tooltips with a custom styled div tooltip system that matches the dashboard theme. This phase should keep all chart data geometry driven by the current API payloads and existing render pipeline.",
+      "name": "Dashboard review panel integration",
+      "description": "把创建能力与复习能力整合到 Dashboard 前端：展示今日复习面板、提供“过/重置”交互、解释复习间隔与类型、呈现积压限制，并明确“不操作即次日继续出现”是隐式行为而非额外按钮。",
       "acceptance": [
-        "Rating Trend renders a visible semi-transparent gradient area beneath the line",
-        "Submission Timeline points render larger than before and enlarge further on hover",
-        "Chart hover information is shown through a custom styled div tooltip rather than browser-native SVG title tooltips",
-        "Tooltip content includes the same essential information currently exposed for rating points and submission points",
-        "Charts remain readable and interactive in desktop layouts down to 1024px width"
+        "Dashboard 显示 review 面板，列出今天最多 10 条待复习内容，并展示类型、核心内容、当前 stage 或下一步语义。",
+        "每条待复习内容都提供“过”和“重置”操作，点击后 UI 会立即反映新状态；完成的条目会从面板移除。",
+        "Dashboard 提供新增复习条目表单并与 review 面板共存，用户可以在解题后直接录入复习内容，无需 CLI。",
+        "界面明确说明没有单独的 defer 按钮；用户若离开页面或不操作，该条目会在后续日期继续出现，行为由服务端调度规则保证。",
+        "当存在超过 10 条的积压时，前端只展示服务端返回的 10 条，不自行打破顺序或数量上限。"
       ],
       "tests": [
-        "Update rating trend render tests to assert gradient markup is present and native SVG title tooltip usage is removed",
-        "Update submission timeline tests to assert larger point radius and hover-target metadata needed by custom tooltips",
-        "Add frontend tests for custom tooltip rendering logic and content formatting for rating and submission entries",
-        "Run dashboard browser smoke test to confirm the page still loads and renders charts end to end"
+        "编写前端集成测试，覆盖 review 面板首屏渲染、按钮交互、完成后移除和创建后进入后续复习周期。",
+        "补充 Dashboard smoke 测试，验证创建条目、获取今日待复习、点击“过/重置”到再次刷新页面的完整用户路径。"
       ],
       "dependsOn": [
-        1,
-        2,
         3,
         4
       ]
@@ -108,9 +100,9 @@
   "techStack": [
     "Node.js 18+",
     "Vanilla JavaScript",
-    "CSS",
-    "HTML/SVG",
-    "node:test"
+    "本地 JSON 文件存储 (`~/.cf-coach/review.json`)",
+    "现有 Dashboard HTTP 服务",
+    "Node 内置 `node:test` 测试框架"
   ],
   "estimatedComplexity": "medium"
 }

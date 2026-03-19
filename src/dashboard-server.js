@@ -83,6 +83,7 @@ function createDashboardRequestHandler(options = {}) {
   return (request, response) => {
     const requestUrl = new URL(request.url || '/', 'http://127.0.0.1');
     const { pathname } = requestUrl;
+    const method = (request.method || 'GET').toUpperCase();
 
     if (pathname === '/' || pathname === '/index.html') {
       writeResponse(response, 200, htmlShell, 'text/html; charset=utf-8');

@@ -15,6 +15,7 @@ function getAppPaths(env = process.env) {
     cacheDir: path.join(appDir, 'cache'),
     configPath: path.join(appDir, 'config.json'),
     logPath: path.join(appDir, 'log.json'),
+    reviewPath: path.join(appDir, 'review.json'),
   };
 }
 
