@@ -559,6 +559,42 @@
       .replace(/'/g, '&#39;');
   }
 
+  function renderMarkdownLite(value) {
+    const raw = String(value ?? '');
+    const escaped = escapeHtml(raw);
+    // Split on fenced code blocks: ```lang\n...\n```
+    const parts = escaped.split(/(```[\s\S]*?```)/g);
+
+    return parts.map((part) => {
+      if (/^```/.test(part)) {
+        const inner = part.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '');
+        return `<pre class="review-code-block"><code>${inner}</code></pre>`;
+      }
+
+      // Inline code: `...` (must be first — protect from later replacements)
+      let result = part.replace(/`([^`]+)`/g, '<code class="review-code-inline">$1</code>');
+      // Bold: **...**
+      result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      // Italic: *...*
+      result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      // Process each line: split on // for comment styling, apply symbols only to non-comment part
+      return result.split('\n').map((line) => {
+        const commentIdx = line.indexOf('//');
+        let before = commentIdx >= 0 ? line.slice(0, commentIdx) : line;
+        const comment = commentIdx >= 0 ? line.slice(commentIdx) : '';
+        // Stylize symbols in the non-comment part
+        before = before.replace(/(<[^>]*>|&[a-z]+;)|([()[\]{}\/])/g, (match, skip, sym) => {
+          if (skip) return skip;
+          return `<span class="review-sym">${sym}</span>`;
+        });
+        if (comment) {
+          return `${before}<span class="review-comment">${comment}</span>`;
+        }
+        return before;
+      }).join('<br>');
+    }).join('');
+  }
+
   function formatNumber(value) {
     if (value == null || Number.isNaN(Number(value))) {
       return '0';
@@ -1068,14 +1104,39 @@
         '</button>',
       ].join('');
     }).join('');
-    const fieldMarkup = definition.fields.map((field) => [
-      `<label class="review-field" data-review-field-group="${escapeHtml(field.name)}">`,
-      `  <span class="review-field-label">${escapeHtml(field.label)}</span>`,
-      `  <input class="review-input" type="text" name="${escapeHtml(field.name)}" data-review-field="${escapeHtml(field.name)}" value="${escapeHtml(draft[field.name] || '')}" placeholder="${escapeHtml(field.placeholder)}" autocomplete="off"${composer.submitting ? ' disabled' : ''}>`,
-      '</label>',
-    ].join('')).join('');
+    const fieldMarkup = definition.fields.map((field) => {
+      const fieldValue = escapeHtml(draft[field.name] || '');
+      const disabled = composer.submitting ? ' disabled' : '';
+
+      if (field.multiline) {
+        return [
+          `<label class="review-field" data-review-field-group="${escapeHtml(field.name)}">`,
+          `  <span class="review-field-label">${escapeHtml(field.label)}</span>`,
+          `  <textarea class="review-input review-input-multiline" name="${escapeHtml(field.name)}" data-review-field="${escapeHtml(field.name)}" placeholder="${escapeHtml(field.placeholder)}" autocomplete="off" rows="3"${disabled}>${fieldValue}</textarea>`,
+          '</label>',
+        ].join('');
+      }
+
+      return [
+        `<label class="review-field" data-review-field-group="${escapeHtml(field.name)}">`,
+        `  <span class="review-field-label">${escapeHtml(field.label)}</span>`,
+        `  <textarea class="review-input review-input-single" name="${escapeHtml(field.name)}" data-review-field="${escapeHtml(field.name)}" placeholder="${escapeHtml(field.placeholder)}" autocomplete="off" rows="1"${disabled}>${fieldValue}</textarea>`,
+        '</label>',
+      ].join('');
+    }).join('');
     const feedbackMarkup = composer.feedback.kind !== 'idle' && composer.feedback.message
       ? `<p class="review-feedback review-feedback-${escapeHtml(composer.feedback.kind)}" role="${composer.feedback.kind === 'error' ? 'alert' : 'status'}">${escapeHtml(composer.feedback.message)}</p>`
+      : '';
+
+    const draftValues = definition.fields.map((f) => draft[f.name] || '');
+    const hasPreviewContent = draftValues.some((v) => v.trim());
+    const previewMarkup = hasPreviewContent
+      ? [
+          '<div class="review-preview">',
+          '  <p class="review-preview-label">Preview</p>',
+          `  <div class="review-preview-content">${renderMarkdownLite(draftValues.join('\n\n'))}</div>`,
+          '</div>',
+        ].join('')
       : '';
 
     return renderPanelFrame(
@@ -1088,6 +1149,7 @@
         `  <div class="review-type-switcher" aria-label="Review type">${typeButtons}</div>`,
         `  <p class="review-format-hint">Format: ${escapeHtml(definition.format)}</p>`,
         `  <div class="review-fields">${fieldMarkup}</div>`,
+        `  ${previewMarkup}`,
         `  ${feedbackMarkup}`,
         '  <div class="review-form-actions">',
         `    <button class="panel-toggle review-submit-button" type="submit"${composer.submitting ? ' disabled' : ''}>${composer.submitting ? 'Adding...' : 'Add Review'}</button>`,
@@ -1148,7 +1210,7 @@
         '    </div>',
         `    <p class="review-item-date">Due ${escapeHtml(item.nextReviewDate || 'today')}</p>`,
         '  </div>',
-        `  <p class="review-item-content">${escapeHtml(item.content || '')}</p>`,
+        `  <div class="review-item-content">${renderMarkdownLite(item.content || '')}</div>`,
         `  <p class="review-item-semantic">${escapeHtml(getReviewPassSummary(item))} Reset sends it back to stage 0 for tomorrow.</p>`,
         '  <div class="review-item-actions">',
         `    <button class="panel-toggle review-action-button review-action-pass" type="button" data-review-item-id="${escapeHtml(item.id)}" data-review-action="pass"${pending ? ' disabled' : ''}>${escapeHtml(passLabel)}</button>`,
@@ -1883,7 +1945,10 @@
 
     function updateReviewField(fieldName, value) {
       controllerState.uiState = setReviewComposerField(controllerState.uiState, fieldName, value);
-      return render();
+      // Intentionally skip render() — the input already shows the typed value.
+      // A full render() would replace the entire DOM via innerHTML, destroying
+      // the focused input element and causing it to lose focus after every keystroke.
+      return controllerState.uiState;
     }
 
     async function submitReviewAction(itemId, action) {
@@ -2044,6 +2109,32 @@
         }
 
         updateReviewField(field.getAttribute('data-review-field'), event.target?.value);
+
+        // Auto-resize textarea
+        if (event.target?.tagName === 'TEXTAREA') {
+          event.target.style.height = 'auto';
+          event.target.style.height = event.target.scrollHeight + 'px';
+        }
+
+        // Update live preview without full re-render (preserves focus)
+        const previewEl = root.querySelector('.review-preview-content');
+        const previewWrapper = root.querySelector('.review-preview');
+        const allFields = root.querySelectorAll('[data-review-field]');
+        const values = Array.from(allFields).map((el) => el.value || '');
+        const hasContent = values.some((v) => v.trim());
+        if (hasContent) {
+          if (!previewWrapper) {
+            // Preview doesn't exist yet — need a full render to create it
+            render();
+            // Restore focus to the field that was being typed in
+            const restored = root.querySelector(`[data-review-field="${field.getAttribute('data-review-field')}"]`);
+            if (restored) restored.focus();
+          } else if (previewEl) {
+            previewEl.innerHTML = renderMarkdownLite(values.join('\n\n'));
+          }
+        } else if (previewWrapper) {
+          previewWrapper.remove();
+        }
       };
 
       const handleSubmit = (event) => {

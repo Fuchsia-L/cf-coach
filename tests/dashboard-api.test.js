@@ -469,7 +469,7 @@ test('POST /api/review creates valid A/B/C/D review items and persists them to r
       assert.equal(payload.item.nextReviewDate, '2026-03-20');
       assert.equal(payload.item.createdAt, fixedNow);
       assert.match(payload.item.id, /^r_1773932400000(?:_\d+)?$/);
-      assert.match(payload.item.content, /—/);
+      assert.match(payload.item.content, /\n\n/);
     }
 
     const savedItems = JSON.parse(

@@ -1,0 +1,20 @@
+node_modules/
+.env
+.env.local
+*.log
+.DS_Store
+
+# vibe / dev-pipeline metadata (internal tooling state, not part of release)
+.dev-pipeline/
+
+# CF coach data cache (lives in user home anyway)
+.cf-coach/
+cache/
+
+# Editor
+.vscode/
+.idea/
+
+# Build output
+dist/
+build/

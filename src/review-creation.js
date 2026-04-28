@@ -14,11 +14,12 @@ const REVIEW_CREATE_DEFINITIONS = Object.freeze({
       Object.freeze({
         name: 'usageNote',
         label: 'Usage note',
-        placeholder: 'Returns the first iterator >= value.',
+        placeholder: 'Returns the first iterator >= value.\nSupports `comp` for custom comparators.',
+        multiline: true,
       }),
     ]),
     composeContent(values) {
-      return `${values.syntaxName} — ${values.usageNote}`;
+      return `${values.syntaxName}\n\n${values.usageNote}`;
     },
   }),
   B: Object.freeze({
@@ -34,10 +35,11 @@ const REVIEW_CREATE_DEFINITIONS = Object.freeze({
         name: 'strategy',
         label: 'Strategy',
         placeholder: 'Think DSU and greedily merge by lexicographic order.',
+        multiline: true,
       }),
     ]),
     composeContent(values) {
-      return `${values.problemContext} — ${values.strategy}`;
+      return `${values.problemContext}\n\n${values.strategy}`;
     },
   }),
   C: Object.freeze({
@@ -48,15 +50,17 @@ const REVIEW_CREATE_DEFINITIONS = Object.freeze({
         name: 'pitfall',
         label: 'Pitfall',
         placeholder: 'Array out of bounds in DSU find.',
+        multiline: true,
       }),
       Object.freeze({
         name: 'prevention',
         label: 'Avoid next time',
         placeholder: 'Write asserts before the first full submission.',
+        multiline: true,
       }),
     ]),
     composeContent(values) {
-      return `${values.pitfall} — ${values.prevention}`;
+      return `${values.pitfall}\n\n${values.prevention}`;
     },
   }),
   D: Object.freeze({
@@ -71,11 +75,12 @@ const REVIEW_CREATE_DEFINITIONS = Object.freeze({
       Object.freeze({
         name: 'snippet',
         label: 'Simple pattern',
-        placeholder: 'Sort by left endpoint, then merge overlaps.',
+        placeholder: 'Sort by left endpoint, then merge overlaps.\n```cpp\nsort(v.begin(), v.end());\n```',
+        multiline: true,
       }),
     ]),
     composeContent(values) {
-      return `${values.problemType} — ${values.snippet}`;
+      return `${values.problemType}\n\n${values.snippet}`;
     },
   }),
 });

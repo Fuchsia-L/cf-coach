@@ -1,0 +1,7 @@
+name = "cf-coach-cache"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+UPSTREAM_ORIGIN = "https://codeforces.com"
+CACHE_TTL_SECONDS = "300"
